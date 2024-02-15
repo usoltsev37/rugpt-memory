@@ -1,4 +1,4 @@
-zrugpt-memory
+rugpt-memory
 ==============================
 
 ruGPT with memory updating by RL
@@ -8,6 +8,14 @@ Run training
 ```bash
 python train_finetuning_codeparrot.py --config configs/finetuning_codeparrot.yml
 ```
+
+Updating environment files
+------------
+```bash
+mamba env export --no-builds --from-history | grep -v "^prefix: " > environment.yml
+mamba env export --no-builds | grep -v "^prefix: " > environment_nailed_down.yml
+```
+
 
 Project Organization
 ------------
@@ -32,14 +40,13 @@ Project Organization
     │
     ├── references         <- Data dictionaries, manuals, and all other explanatory materials.
     │
-    ├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-    │   └── figures        <- Generated graphics and figures to be used in reporting
+    ├── logs               <- Generated tensorboard figures and other logs
     │
     ├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
     │                         generated with `pip freeze > requirements.txt`
     │
-    ├── setup.py           <- makes project pip installable (pip install -e .) so src can be imported
-    ├── src                <- Source code for use in this project.
+    ├── setup.py           <- TODO makes project pip installable (pip install -e .) so src can be imported
+    ├── src                <- TODO Source code for use in this project.
     │   ├── __init__.py    <- Makes src a Python module
     │   │
     │   ├── data           <- Scripts to download or generate data
@@ -56,7 +63,7 @@ Project Organization
     │   └── visualization  <- Scripts to create exploratory and results oriented visualizations
     │       └── visualize.py
     │
-    └── tox.ini            <- tox file with settings for running tox; see tox.readthedocs.io
+    └── tox.ini            <- TODO tox file with settings for running tox; see tox.readthedocs.io
 
 
 --------
