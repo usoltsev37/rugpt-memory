@@ -1,0 +1,17 @@
+name: base
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - conda==23.10.0
+  - setuptools
+  - pip
+  - wheel
+  - conda-content-trust
+  - conda-libmamba-solver
+  - mamba
+  - pytorch
+  - ca-certificates
+  - certifi
+  - openssl
