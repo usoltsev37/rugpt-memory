@@ -1,17 +1,23 @@
-name: base
+name: rugpt_dev
 channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.11
-  - conda==23.10.0
-  - setuptools
-  - pip
-  - wheel
-  - conda-content-trust
-  - conda-libmamba-solver
-  - mamba
-  - pytorch
+  - python=3.9
+  - conda-forge::cookiecutter
   - ca-certificates
-  - certifi
   - openssl
+  - conda-forge::huggingface_hub
+  - certifi
+  - jupyterlab
+  - conda-forge::transformers
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=11.8
+  - conda-forge::accelerate
+  - conda-forge::requests=2.27.1
+  - conda-forge::datasets==2.16.1
+  - cudatoolkit=11.8
+  - conda-forge::bitsandbytes
+  - conda-forge::tensorboard
