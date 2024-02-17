@@ -15,9 +15,10 @@ dependencies:
   - torchvision
   - torchaudio
   - pytorch-cuda=11.8
-  - conda-forge::accelerate
+  - accelerate
   - conda-forge::requests=2.27.1
   - conda-forge::datasets==2.16.1
   - cudatoolkit=11.8
   - conda-forge::bitsandbytes
   - conda-forge::tensorboard
+  - peft

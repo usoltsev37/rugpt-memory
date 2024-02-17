@@ -9,6 +9,12 @@ Run training
 python train_finetuning_codeparrot.py --config configs/finetuning_codeparrot.yml
 ```
 
+Run tensorboard
+------------
+```bash
+tensorboard --logdir logs/tensorboard/
+```
+
 Updating environment files
 ------------
 ```bash

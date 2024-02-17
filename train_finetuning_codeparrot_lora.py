@@ -3,6 +3,7 @@ import transformers
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from transformers.integrations import TensorBoardCallback
+import peft
 
 from src.utils.train_config import load_config
 from src.models.load_base_model import load_base_model
@@ -20,20 +21,10 @@ def main() -> None:
 
     model, tokenizer = load_base_model(main_config)
     
+    peft_config = peft.LoraConfig(task_type="SEQ_CLS", inference_mode=False, r=8, lora_alpha=16, lora_dropout=0.1)
+    model = peft.get_peft_model(model, peft_config)
+
     dataset = load_codeparrot_dataset(tokenizer)
- 
-    # Unfreeze 6.8% of model weights 
-    for param in model.transformer.h[38:].parameters():
-        param.requires_grad=True
-        param.data = param.data.to(torch.float32)
-
-    for param in model.transformer.ln_f.parameters():
-        param.requires_grad=True
-        param.data = param.data.to(torch.float32)
-
-    for param in model.lm_head.parameters():
-        param.requires_grad=True
-        param.data = param.data.to(torch.float32)
     
     logger.info('Initializing tensorboard')
     tensorboard_logs_dir = f'logs/tensorboard/{main_config.exp_name}/'
@@ -42,7 +33,6 @@ def main() -> None:
     logger.info('Training')
     model._hf_peft_config_loaded = True # silence warnings - for research it is ok
     model.config.use_cache = False # silence warnings from torch
-    
     trainer_args = main_config.trainer_args
     trainer = transformers.Trainer(
         model=model, train_dataset=dataset['train'],
