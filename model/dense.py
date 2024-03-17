@@ -12,7 +12,7 @@ class DenseNetwork(nn.Module):
                  hidden_dim: int,
                  out_dim: int,
                  activation_fn: Callable[[torch.Tensor], torch.Tensor] = F.relu,
-                 dropout: float = 0.1):
+                 dropout: float = 0.):
         """Dense network with adjustable number of hidden layers.
         :param n_hid_layers: number of hidden layers
         :param input_dim: size of each input sample
