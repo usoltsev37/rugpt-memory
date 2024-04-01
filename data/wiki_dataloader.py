@@ -32,7 +32,7 @@ class EpochDataloader(DataLoader):
 
     def _collate_fn(self, batch: [str]) -> torch.Tensor:
         tokenized_batch = [self.tokenizer(x, **self.tokenizer_parameters)["input_ids"] for x in batch]
-        return torch.tensor(np.array(self._crop_data(tokenized_batch)), dtype=torch.float32)
+        return torch.tensor(np.array(self._crop_data(tokenized_batch)), dtype=torch.long)
 
     def __iter__(self):
         self.iterator = super().__iter__()
