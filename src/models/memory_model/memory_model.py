@@ -2,11 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from model.decoder import Decoder, DecoderBlock
-from model.encoder import Encoder, EncoderBlock
-from model.action_sampler import ActionSampler
-from config import DecoderArgs, EncoderArgs, ActionSamplerArgs
-from dataclasses import asdict
+from src.models.memory_model.decoder import Decoder, DecoderBlock
+from src.models.memory_model.encoder import Encoder, EncoderBlock
+from src.models.memory_model.action_sampler import ActionSampler
 
 from rl.utils import State
 
@@ -25,20 +23,14 @@ class MemoryModel(torch.nn.Module):
                  memory_type: str,
                  n_enc_block: int,
                  n_dec_block: int,
-                 encoder_args: EncoderArgs,
-                 decoder_args: DecoderArgs,
-                 action_sampler_args: ActionSamplerArgs
-                 ) -> None:
+                 dtype: torch.dtype) -> None:
         """
         :param d_embd: main model embedding size
         :param d_mem: memory vector size
         :param memory_type: type of memory action sampling. Conservative memory allows only
             one memory cell to be replaced, while flexible memory allows multiple memories
             to be replaced at the same time.
-        :param encoder_args:
-        :param decoder_args:
-        :param action_sampler_args:
-        :return:
+        :param dtype:
         """
 
         if memory_type not in ["conservative", "flexible"]:
@@ -49,9 +41,10 @@ class MemoryModel(torch.nn.Module):
         self.d_mem = d_mem
         self.num_vectors = num_vectors
         self.memory_type = memory_type
-        self.encoder = Encoder(EncoderBlock(d_embd=d_embd, **asdict(encoder_args)), n_enc_block)
-        self.decoder = Decoder(DecoderBlock(d_embd=d_embd, d_mem=d_mem, **asdict(decoder_args)), n_dec_block)
-        self.action_sampler = ActionSampler(d_mem=d_mem, **asdict(action_sampler_args))
+        self.dtype = dtype
+        self.encoder = Encoder(EncoderBlock(d_embd=d_embd, dtype=dtype), n_enc_block)
+        self.decoder = Decoder(DecoderBlock(d_embd=d_embd, d_mem=d_mem, dtype=dtype), n_dec_block)
+        self.action_sampler = ActionSampler(d_mem=d_mem, dtype=dtype, memory_type=memory_type)
 
     def forward(self, memory: torch.tensor, embeddings: torch.tensor, attn_mask: torch.tensor = None) \
             -> tuple[torch.tensor, torch.tensor]:
@@ -65,6 +58,16 @@ class MemoryModel(torch.nn.Module):
         dec_out = self.decoder(memory, enc_out)
         action = self.action_sampler(dec_out)
         return action
+
+    def freeze(self) -> None:
+        self.eval()
+        for p in self.parameters():
+            p.requires_grad = False
+
+    def unfreeze(self) -> None:
+        self.train()
+        for p in self.parameters():
+            p.requires_grad = True
 
 
 class SyntheticTaskModel(torch.nn.Module):

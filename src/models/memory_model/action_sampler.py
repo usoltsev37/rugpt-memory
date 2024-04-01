@@ -1,26 +1,39 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from model.dense import DenseNetwork
+from src.models.memory_model.dense import DenseNetwork
 
 
 class ActionSampler(nn.Module):
     """A module that returns distribution parameters for sampling new memory and distribution parameters
      for sampling memory positions to be replaced."""
 
-    def __init__(self, d_mem: int,
-                 dense_for_input: dict,
-                 dense_for_sampling_positions: dict,
-                 dense_for_sampling_memory_vectors: dict,
-                 memory_type: str = "conservative"):
+    def __init__(self,
+                 d_mem: int,
+                 dtype: torch.dtype,
+                 memory_type: str = "conservative"
+                 ) -> None:
 
         super().__init__()
         self.d_mem = d_mem
         self.memory_type = memory_type
+        self.dtype = dtype
 
-        self.dense_inp = DenseNetwork(**dense_for_input)
-        self.dense_pos = DenseNetwork(**dense_for_sampling_positions)
-        self.dense_mem_vec = DenseNetwork(**dense_for_sampling_memory_vectors)
+        self.dense_inp = DenseNetwork(n_hid_layers=1,
+                                      input_dim=d_mem,
+                                      hidden_dim=d_mem * 4,
+                                      out_dim=d_mem,
+                                      dtype=dtype)
+        self.dense_pos = DenseNetwork(n_hid_layers=1,
+                                      input_dim=d_mem,
+                                      hidden_dim=d_mem * 4,
+                                      out_dim=1,
+                                      dtype=dtype)
+        self.dense_mem_vec = DenseNetwork(n_hid_layers=1,
+                                          input_dim=d_mem,
+                                          hidden_dim=d_mem * 4,
+                                          out_dim=d_mem * 2,
+                                          dtype=dtype)
 
     def forward(self, mem: torch.tensor) -> tuple[torch.tensor, torch.tensor]:
         """
