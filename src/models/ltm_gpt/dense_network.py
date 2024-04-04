@@ -9,7 +9,7 @@ class DenseNetwork(nn.Module):
             self,
             embed_dim=5120,
             hidden_size=10240,
-            dtype=torch.float32,
+            dtype=torch.float16,
             initialize_with_zeros=False
     ):
         super().__init__()

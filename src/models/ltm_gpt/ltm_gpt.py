@@ -2,14 +2,6 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
-# from transformers.utils import (
-#     ModelOutput,
-#     add_code_sample_docstrings,
-#     add_start_docstrings,
-#     add_start_docstrings_to_model_forward,
-#     logging,
-#     replace_return_docstrings,
-# )
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
 from typing import Optional, Tuple, Union
 
@@ -19,36 +11,21 @@ from src.models.ltm_gpt.ltm_gpt2_block import LTMGPT2Block
 class LTM_GPT(GPT2LMHeadModel):
     """ Custom LTM GPT2 layer with memory """
 
-    def __init__(self, model_: GPT2LMHeadModel, cnt_blocks_with_memory=2):
+    def __init__(self, model_: GPT2LMHeadModel, cnt_blocks_with_memory=2, device=torch.device('cuda:1')):
         super().__init__(model_.config)
+
+        assert torch.cuda.is_available()
+        assert torch.cuda.device_count() == 2
+
         self.model_ = model_
         self.transformer = self.model_.transformer
         self.transformer.h = self.model_.transformer.h[:-cnt_blocks_with_memory]
 
-        # class CastOutputToFloat(torch.nn.Sequential):
-        #     def forward(self, x): return super().forward(x).to(torch.float32)
-        #
-        # self.transformer.h[-cnt_blocks_with_memory - 1] = CastOutputToFloat(self.transformer.h[-cnt_blocks_with_memory - 1])  # cast model ouputs to unfuct the top-k sampler
-
         self.transformer_ltm_blocks = nn.ModuleList([
             LTMGPT2Block(self.model_.transformer.h[-cnt_blocks_with_memory + i]) for i in range(cnt_blocks_with_memory)
-        ]).cuda(device=self.model_.device)
-
+        ]).cuda(device=device)
         self.lm_head = self.model_.lm_head
 
-        # Model parallel
-        # self.model_parallel = False
-        # self.device_map = None
-
-        # Initialize weights and apply final processing
-        # self.post_init()
-
-    # @add_start_docstrings_to_model_forward(GPT2_INPUTS_DOCSTRING)
-    # @add_code_sample_docstrings(
-    #     checkpoint=_CHECKPOINT_FOR_DOC,
-    #     output_type=CausalLMOutputWithCrossAttentions,
-    #     config_class=_CONFIG_FOR_DOC,
-    # )
     def forward(
             self,
             input_ids: Optional[torch.LongTensor] = None,
@@ -92,16 +69,6 @@ class LTM_GPT(GPT2LMHeadModel):
         hidden_states = transformer_outputs[0]
 
         # Init memory as hidden_states from 37 layers
-        # BaseModelOutputWithPastAndCrossAttentions(
-        #     last_hidden_state=hidden_states,
-        #     past_key_values=presents,
-        #     hidden_states=all_hidden_states,
-        #     attentions=all_self_attentions,
-        #     cross_attentions=all_cross_attentions,
-        # )
-
-        print(len(transformer_outputs))
-        # print(len(transformer_outputs))
         memory = transformer_outputs[2][-1]
 
         for block in self.transformer_ltm_blocks:

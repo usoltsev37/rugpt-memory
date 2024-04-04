@@ -96,3 +96,7 @@ logs/
 
 # All files and dir with temp subword
 *temp*
+*Untitled*
+
+# Folder with repositories for articles from the overview
+repo/
