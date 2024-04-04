@@ -3,65 +3,75 @@ import pickle
 import random
 from pathlib import Path
 from torch.utils.data import Dataset
-import numpy as np
-from tqdm import tqdm
-import gc
-
-
-def split_file(original_file_path: str, target_dir: str, max_size_bytes: int = 200 * 1024 * 1024) -> None:
-    """
-    Splits a large file into smaller parts with a maximum size each, saving them to a target directory.
-    :param original_file_path: The path to the original large file.
-    :param target_dir: The directory where the split files will be saved.
-    :param max_size_bytes: The maximum size in bytes for each split file part (default is 200MB).
-    """
-    original_file_path = Path(original_file_path)
-    target_dir = Path(target_dir)
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    with original_file_path.open('rb') as original_file:
-        part_num = 0
-        part_content = []
-        current_size = 0
-
-        for line in original_file:
-            part_content.append(line)
-            current_size += len(line)
-            if current_size >= max_size_bytes:
-                part_file_path = target_dir / f"part_{part_num}.jsonl"
-                with part_file_path.open('wb') as part_file:
-                    part_file.writelines(part_content)
-                part_content = []
-                current_size = 0
-                part_num += 1
-
-        # Save any remaining content as the last part
-        if part_content:
-            part_file_path = target_dir / f"part_{part_num}.jsonl"
-            with part_file_path.open('wb') as part_file:
-                part_file.writelines(part_content)
 
 
 class WikiDataset(Dataset):
-    def __init__(self, data_path: str, n_context: int = 1, split='train') -> None:
+    def __init__(self, data_path: str, n_context: int = 1, split: str = 'train', shuffle_context: bool = True) -> None:
         """
-        Initializes the WikiDataset object for loading and processing Wikipedia article data.
+        Initializes the dataset object for loading and processing article data.
+        Automatically handles train/test split if not already done.
         :param data_path: Path to the folder with the dataset ("dataset_sections.jsonl" divided into files)
         :param n_context: Number of article contexts to sample for each paragraph (default is 1).
-        :param index_path: Path to save or load the index file.
         :param split: Train or Test
         """
-        self.path = Path(data_path)
+        self.data_path = Path(data_path)
+        self.shuffle_context = shuffle_context
         self.n_context = n_context
-        self.index_path = Path(data_path) / 'split.train_index.pkl' if split == 'train' else Path(
-            data_path) / 'split.test_index.pkl'
+        self.split = split
+        self.index_path = Path(data_path) / 'split' / f"{split}_index.pkl"
 
         if not self.index_path.exists():
-            raise Exception("Path to index does not exist! Try another one!")
+            print("Index or split not found. Creating now...")
+            self.prepare_dataset()
 
         self.id_to_offset = self._load_index()
         self.ids = list(self.id_to_offset.keys())
         self.length = len(self.ids)
+
+    def prepare_dataset(self):
+        """
+        Prepares the dataset by creating an index and splitting into train/test.
+        """
+        index = self.create_index()
+        self.train_test_split(index)
+
+    def create_index(self) -> dict:
+        """
+        Creates an index mapping article IDs to their file locations and offsets.
+        :return: A dictionary mapping article IDs to tuples containing the file path and byte offset.
+        """
+
+        index = {}
+        for part_file in self.data_path.glob('*.jsonl'):
+            offset = 0
+            with part_file.open('rb') as f:
+                for line in f:
+                    article = json.loads(line)
+                    index[article['document_id']] = (part_file, offset)
+                    offset += len(line)
+
+        return index
+
+    def train_test_split(self, index: dict, test_size: float = 0.1, seed: int = 42) -> None:
+        """
+        Splits the index into train and test sets and saves them.
+        """
+        random.seed(seed)
+        ids = list(index.keys())
+        random.shuffle(ids)
+        split_idx = int(len(ids) * (1 - test_size))
+        train_ids, test_ids = ids[:split_idx], ids[split_idx:]
+
+        train_index = {id_: index[id_] for id_ in train_ids}
+        test_index = {id_: index[id_] for id_ in test_ids}
+
+        train_index_path = self.data_path / 'split' / "train_index.pkl"
+        test_index_path = self.data_path / 'split' / "test_index.pkl"
+        train_index_path.parent.mkdir(parents=True, exist_ok=True)
+        with train_index_path.open('wb') as f:
+            pickle.dump(train_index, f)
+        with test_index_path.open('wb') as g:
+            pickle.dump(test_index, g)
 
     def _load_index(self) -> dict:
         """
@@ -104,13 +114,13 @@ class WikiDataset(Dataset):
         :param article: The article data as a dictionary.
         :return: A string containing the article text with context added to each section.
         """
-        article_texts = [article["title"] + '\n']
-        for (text, links) in zip(article["texts"], article["links"]):
-            context = self._sample_context(links)
-            if context:
-                article_texts.append(context)
-            article_texts.append(text)
-        return "".join(article_texts)
+        contexts = list(filter(lambda x: x != '', [self._sample_context(links) for links in article["links"]]))
+
+        if self.shuffle_context:
+            random.shuffle(contexts)
+
+        result = [article["title"], *contexts, ''.join(article["texts"])]
+        return "\n".join(result)
 
     def __getitem__(self, item) -> str:
         """
@@ -124,49 +134,3 @@ class WikiDataset(Dataset):
             f.seek(offset)
             article = json.loads(f.readline())
             return self._add_context_to_article(article)
-
-
-def create_index(dataset_path: str, index_path: str) -> None:
-    """
-    Creates an index mapping article IDs to their file locations and offsets.
-    :return: A dictionary mapping article IDs to tuples containing the file path and byte offset.
-    """
-    dataset_path = Path(dataset_path)
-    index_path = Path(index_path)
-
-    index = {}
-    for part_file in dataset_path.iterdir():
-        with part_file.open('rb') as f:
-            offset = 0
-            while line := f.readline():
-                if line != b"\n":
-                    article_id = json.loads(line)["document_id"]
-                    index[article_id] = (part_file, offset)
-                    offset += len(line)
-                else:
-                    offset += len(line)
-
-    with index_path.open('wb') as f:
-        pickle.dump(index, f)
-
-
-def train_test_split(test_size: float, seed: int, save_path: str, index_path: str):
-    np.random.seed(seed)
-    with Path(index_path).open('rb') as f:
-        index = pickle.load(f)
-    test_size = int(test_size * len(index))
-    ids = list(index.keys())
-    test_ids = np.random.choice(ids, test_size, replace=False)
-
-    save_path = Path(save_path)
-    if not save_path.exists():
-        save_path.mkdir(parents=True, exist_ok=True)
-
-    test_index = {k: v for k, v in tqdm(index.items()) if k in test_ids}
-    train_index = {k: v for k, v in tqdm(index.items()) if k not in test_ids}
-
-    with open(save_path / "test_index.pkl", "wb") as f:
-        pickle.dump(test_index, f)
-
-    with open(save_path / "train_index.pkl", "wb") as g:
-        pickle.dump(train_index, g)
