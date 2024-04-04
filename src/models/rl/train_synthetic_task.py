@@ -5,8 +5,8 @@ from config import *
 from model.memory_model import SyntheticTaskModel
 from tqdm import tqdm
 
-from rl.envs import SyntheticTaskEnv
-from rl.reinforce_for_synthetic_task import REINFORCE
+from src.models.rl.envs import SyntheticTaskEnv
+from src.models.rl.reinforce_for_synthetic_task import REINFORCE
 
 
 def set_seed(seed: int = 42) -> None:

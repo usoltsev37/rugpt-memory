@@ -1,7 +1,6 @@
 import torch
-import torch.nn as nn
 
-from rl.utils import Action
+from src.models.rl import Action
 
 
 class MemoryModule:

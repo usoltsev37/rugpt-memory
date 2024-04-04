@@ -1,12 +1,12 @@
 import torch
 import torch.nn.functional as F
 
-from model.ltm import LTMModel
+from src.models.ltm_gpt.ltm_jbelova import LTMModel
 from model.memory import MemoryModule
 
 from config import SyntheticTaskEnvParams
 
-from rl.utils import Action, State
+from src.models.rl.utils import Action, State
 
 
 class LTMEnvironment:

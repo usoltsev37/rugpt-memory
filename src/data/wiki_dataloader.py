@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 
-from data.wiki_dataset import WikiDataset
+from src.data.wiki_dataset import WikiDataset
 
 
 class EpochDataloader(DataLoader):

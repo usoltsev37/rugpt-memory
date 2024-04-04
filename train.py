@@ -7,8 +7,8 @@ import math
 
 from src.models.load_ltm_model import load_ltm_model
 from src.utils.logger_singleton import logger
-from data.wiki_dataset import WikiDataset
-from data.wiki_dataloader import EpochDataloader
+from src.data.wiki_dataset import WikiDataset
+from src.data.wiki_dataloader import EpochDataloader
 from transformers.trainer_pt_utils import get_model_param_count
 
 from src.models.ltm_gpt.ltm_gpt import LTM_GPT
@@ -17,9 +17,9 @@ from src.models.memory_model.memory import MemoryModule
 
 from src.utils.train_config import *
 
-from rl.agent import Agent
-from rl.utils import State
-from rl.train import train_rl
+from src.models.rl.agent import Agent
+from src.models.rl import State
+from src.models.rl import train_rl
 
 
 ###############################################################################

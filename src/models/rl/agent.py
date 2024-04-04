@@ -4,7 +4,7 @@ from model.memory_model import MemoryModel, SyntheticTaskModel
 from torch import nn
 from torch.distributions import Bernoulli, Categorical, Normal
 
-from rl.envs import Action, State
+from src.models.rl.envs import Action, State
 
 
 class Agent(nn.Module):

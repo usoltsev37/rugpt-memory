@@ -8,8 +8,8 @@ from torch import nn
 from torch.optim import Adam
 from torch.distributions import Categorical, Bernoulli, Normal
 
-from rl.agent import Agent
-from rl.utils import Action, State
+from src.models.rl.agent import Agent
+from src.models.rl.utils import Action, State
 
 
 class REINFORCE:

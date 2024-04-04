@@ -6,7 +6,7 @@ from src.models.memory_model.decoder import Decoder, DecoderBlock
 from src.models.memory_model.encoder import Encoder, EncoderBlock
 from src.models.memory_model.action_sampler import ActionSampler
 
-from rl.utils import State
+from src.models.rl import State
 
 
 class MemoryModel(torch.nn.Module):
