@@ -70,8 +70,12 @@ class LTM_GPT(GPT2LMHeadModel):
         self.eval()
         for p in self.transformer_ltm_blocks.parameters():
             p.requires_grad = False
+        for p in self.lm_head.parameters():
+            p.requires_grad = False
 
     def unfreeze(self) -> None:
         self.train()
         for p in self.transformer_ltm_blocks.parameters():
+            p.requires_grad = True
+        for p in self.lm_head.parameters():
             p.requires_grad = True
