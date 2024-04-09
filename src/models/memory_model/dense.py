@@ -10,7 +10,8 @@ class DenseNetwork(nn.Module):
                  hidden_dim: int = 10240,
                  out_dim: int = 5120,
                  dtype: torch.dtype = torch.float32,
-                 dropout: float = 0.1):
+                 dropout: float = 0.1,
+                 initialize_with_zeros=False):
         """
         Dense network with adjustable number of hidden layers.
         :param n_hid_layers: Number of hidden layers
@@ -32,6 +33,10 @@ class DenseNetwork(nn.Module):
 
         layers.append(nn.Linear(hidden_dim, out_dim, dtype=dtype))
         self.layers = nn.Sequential(*layers)
+
+        if initialize_with_zeros:
+            for param in self.parameters():
+                nn.init.zeros_(param)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for layer in self.layers[:-1]:

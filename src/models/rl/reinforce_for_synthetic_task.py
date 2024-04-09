@@ -2,12 +2,12 @@ import pickle
 
 import numpy as np
 import torch
-from config import RLArgs
-from model.memory_model import SyntheticTaskModel
 from torch import nn
+from torch.distributions import Bernoulli, Categorical, Normal
 from torch.optim import Adam
-from torch.distributions import Categorical, Bernoulli, Normal
+from train_config import RLArgs
 
+from src.models.memory_model.memory_model import SyntheticTaskModel
 from src.models.rl.agent import Agent
 from src.models.rl.utils import Action, State
 

@@ -1,69 +1,72 @@
 import torch
 from torch import nn
 
-from src.models.ltm_gpt.dense_network import DenseNetwork
+from src.models.memory_model.dense import DenseNetwork
 
 
 class LTMGPT2Block(nn.Module):
     """ Custom LTMGPT2Block layer with memory """
 
-    def __init__(
-            self,
-            gpt2_block,
-            num_heads=4,
-            attn_dropout=0.1,
-            dense_network_hidden_size=10240,
-            dtype=torch.float16
-    ):
+    def __init__(self,
+                 gpt2_block: nn.Module,
+                 d_mem: int,
+                 num_heads: int = 4,
+                 dropout: float = 0.1,
+                 dtype: torch.dtype = torch.float32):
         super().__init__()
-        self.dtype = dtype
         self.gpt2_block = gpt2_block
-
+        self.d_mem = d_mem
+        self.dtype = dtype
         self.embed_dim = self.gpt2_block.ln_1.normalized_shape[0]
-        self.dense_network_hidden_size = dense_network_hidden_size
 
-        assert self.dtype in [torch.float16, torch.float32]
+        assert dtype in [torch.float16, torch.float32]
 
-        # self.memory: ( , , ) / (target_sentence_length, batch_size, self.embed_dim) (5120) | torch.FloatTensor / nn.Embedding
-        self.memory = None
-
-        # goal: convert memory from ( , , ) to (source_sentence_length, batch_size, self.embed_dim)
         self.dense_network1 = DenseNetwork(
-            embed_dim=self.embed_dim,
-            hidden_size=self.dense_network_hidden_size,
-            dtype=self.dtype,
-            initialize_with_zeros=False
-        )
+            n_hid_layers=1,
+            input_dim=d_mem,
+            hidden_dim=d_mem * 2,
+            out_dim=self.embed_dim,
+            dtype=dtype,
+            dropout=dropout,
+            initialize_with_zeros=False)
 
-        self.attn = nn.MultiheadAttention(  # TODO masked ????
+        self.attn = nn.MultiheadAttention(
             embed_dim=self.embed_dim,
             num_heads=num_heads,
-            dropout=attn_dropout,
-            batch_first=False,
-            dtype=self.dtype
+            dropout=dropout,
+            batch_first=True,
+            dtype=dtype
         )
 
-        self.ln1 = nn.LayerNorm(self.embed_dim, dtype=self.dtype)
+        self.ln1 = nn.LayerNorm(self.embed_dim * 2, dtype=dtype)
 
         self.dense_network2 = DenseNetwork(
-            embed_dim=self.embed_dim,
-            hidden_size=self.dense_network_hidden_size,
-            dtype=self.dtype,
+            n_hid_layers=1,
+            input_dim=self.embed_dim * 2,
+            hidden_dim=self.embed_dim * 4,
+            out_dim=self.embed_dim,
+            dropout=dropout,
+            dtype=dtype,
             initialize_with_zeros=True
         )
 
-        self.ln2 = nn.LayerNorm(self.embed_dim, dtype=self.dtype)
+        self.ln2 = nn.LayerNorm(self.embed_dim, dtype=dtype)
 
-    def forward(self, x):  # x: (sentence_length, batch_size, self.embed_dim)
-        assert self.memory is not None
+    def forward(self,
+                hidden_states: torch.Tensor,
+                attention_mask: torch.Tensor,
+                memory: torch.Tensor):
 
-        # TransformerBlock
-        query = self.gpt2_block(x)[0]  # query: (sentence_length, batch_size, self.embed_dim)
+        attention_mask = attention_mask[:, None, None, :]
+        attention_mask = attention_mask.to(dtype=self.dtype)
+        attention_mask = (1.0 - attention_mask) * torch.finfo(self.dtype).min
+
+        query = self.gpt2_block(hidden_states=hidden_states, attention_mask=attention_mask)[0]
 
         residual = query
 
-        # DenseNetowork
-        memory = self.dense_network1(self.memory)
+        # DenseNetwork
+        memory = self.dense_network1(memory)
 
         # MultiHead Attention
         key, value = memory, memory
@@ -74,17 +77,17 @@ class LTMGPT2Block(nn.Module):
         )
 
         # Norm & Concat
-        x = x + residual
-        x = self.ln1(x)
+        x = torch.cat((residual, x), dim=-1)
+        if self.dtype == torch.float16:
+            x = self.ln1(x.float()).type(torch.float16)
+        else:
+            x = self.ln1(x)
 
-        # DenseNetowork initialized with zeroes
+        # DenseNetwork initialized with zeroes
         x = self.dense_network2(x)
 
-        # Norm & Concat
+        # Norm & Sum
         x = x + residual
         x = self.ln2(x)
 
         return x
-
-    def update_memory(self, new_memory):
-        self.memory = new_memory

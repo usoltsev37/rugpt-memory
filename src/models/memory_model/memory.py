@@ -1,6 +1,7 @@
 import torch
+import torch.nn.functional as F
 
-from src.models.rl import Action
+from src.models.rl.utils import Action
 
 
 class MemoryModule:
@@ -15,6 +16,7 @@ class MemoryModule:
         :param num_vectors: number of vectors in the memory
         :param memory_type: type of the memory, defaults to "conservative"
         """
+        self.memory = None
         self.d_mem = d_mem
         self.num_vectors = num_vectors
         self.memory_type = memory_type
@@ -24,6 +26,8 @@ class MemoryModule:
         self.memory = torch.zeros((batch_size, self.num_vectors, self.d_mem))
 
     def update(self, action: Action) -> torch.Tensor:
-        mask = action.positions.unsqueeze(-1).expand_as(self.memory)
+        mask = F.one_hot(action.positions,
+                         num_classes=self.num_vectors)
+        mask = mask.unsqueeze(-1).expand_as(self.memory)
         self.memory = torch.where(mask == 1, action.memory_vectors, self.memory)
         return self.memory

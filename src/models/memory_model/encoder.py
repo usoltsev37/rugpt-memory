@@ -23,13 +23,14 @@ class Encoder(nn.Module):
         self.blocks = get_clones(block, n_block)
         self.ln_out = nn.LayerNorm(block.d_embd, dtype=block.dtype)
 
-    def forward(self, x: torch.tensor) -> torch.tensor:
+    def forward(self, x: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
         """
         :param x: Encoder input, tensor of sentence embeddings [batch, seq_len, d_embd]
+        :param attention_mask:
         :return: Tensor of updated embeddings [batch, seq_len, d_embd]
         """
         for block in self.blocks:
-            x = block(x)
+            x = block(x, attention_mask)
         return self.ln_out(x)
 
 
@@ -41,7 +42,7 @@ class EncoderBlock(nn.Module):
     def __init__(self,
                  d_embd: int = 5120,
                  d_hid: int = 20480,
-                 n_head: int = 8,
+                 n_head: int = 2,
                  dtype: torch.dtype = torch.float32,
                  dropout: float = 0.1
                  ) -> None:
@@ -63,8 +64,9 @@ class EncoderBlock(nn.Module):
         self.ln_2 = nn.LayerNorm(d_embd, dtype=dtype)
         self.mlp = DenseNetwork(1, d_embd, d_hid, d_embd, dropout=dropout, dtype=dtype)
 
-    def forward(self, x: torch.tensor) -> torch.tensor:
+    def forward(self, x: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
         x = self.ln_1(x)
-        attn_mask = nn.Transformer.generate_square_subsequent_mask(x.shape[1])
-        x = x + self.attn(x, x, x, is_causal=True, attn_mask=attn_mask)[0]
+        attn_mask = torch.triu(torch.full((x.shape[1], x.shape[1]), 1.), diagonal=1).bool()
+        x = x + self.attn(x, x, x, is_causal=True, attn_mask=attn_mask, key_padding_mask=(1 - attention_mask).bool())[
+            0]
         return x + self.mlp(self.ln_2(x))

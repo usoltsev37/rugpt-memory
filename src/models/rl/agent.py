@@ -1,9 +1,10 @@
 import torch
 import torch.nn.functional as F
-from model.memory_model import MemoryModel, SyntheticTaskModel
 from torch import nn
 from torch.distributions import Bernoulli, Categorical, Normal
 
+from src.models.memory_model.memory_model import (MemoryModel,
+                                                  SyntheticTaskModel)
 from src.models.rl.envs import Action, State
 
 

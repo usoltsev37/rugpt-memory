@@ -1,10 +1,10 @@
 import random
 
 import numpy as np
-from config import *
-from model.memory_model import SyntheticTaskModel
 from tqdm import tqdm
+from train_config import *
 
+from src.models.memory_model.memory_model import SyntheticTaskModel
 from src.models.rl.envs import SyntheticTaskEnv
 from src.models.rl.reinforce_for_synthetic_task import REINFORCE
 

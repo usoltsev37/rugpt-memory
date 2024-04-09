@@ -52,26 +52,35 @@ class WikiDataset(Dataset):
 
         return index
 
-    def train_test_split(self, index: dict, test_size: float = 0.1, seed: int = 42) -> None:
+    def train_test_split(self, index: dict, train_size: float = 0.8) -> None:
         """
         Splits the index into train and test sets and saves them.
         """
-        random.seed(seed)
         ids = list(index.keys())
         random.shuffle(ids)
-        split_idx = int(len(ids) * (1 - test_size))
+        split_idx = int(len(ids) * train_size)
         train_ids, test_ids = ids[:split_idx], ids[split_idx:]
 
+        # Get validation set
+        random.shuffle(test_ids)
+        split_idx = int(len(test_ids) * 0.5)
+        val_ids, test_ids = ids[:split_idx], ids[split_idx:]
+
         train_index = {id_: index[id_] for id_ in train_ids}
+        val_index = {id_: index[id_] for id_ in val_ids}
         test_index = {id_: index[id_] for id_ in test_ids}
 
         train_index_path = self.data_path / 'split' / "train_index.pkl"
+        val_index_path = self.data_path / 'split' / "val_index.pkl"
         test_index_path = self.data_path / 'split' / "test_index.pkl"
+
         train_index_path.parent.mkdir(parents=True, exist_ok=True)
         with train_index_path.open('wb') as f:
             pickle.dump(train_index, f)
         with test_index_path.open('wb') as g:
             pickle.dump(test_index, g)
+        with val_index_path.open('wb') as e:
+            pickle.dump(val_index, e)
 
     def _load_index(self) -> dict:
         """

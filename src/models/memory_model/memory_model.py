@@ -2,11 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from src.models.memory_model.action_sampler import ActionSampler
 from src.models.memory_model.decoder import Decoder, DecoderBlock
 from src.models.memory_model.encoder import Encoder, EncoderBlock
-from src.models.memory_model.action_sampler import ActionSampler
-
-from src.models.rl import State
+from src.models.rl.utils import State
 
 
 class MemoryModel(torch.nn.Module):
@@ -20,10 +19,10 @@ class MemoryModel(torch.nn.Module):
                  d_embd: int,
                  d_mem: int,
                  num_vectors: int,
-                 memory_type: str,
-                 n_enc_block: int,
-                 n_dec_block: int,
-                 dtype: torch.dtype) -> None:
+                 memory_type: str = "conservative",
+                 n_enc_block: int = 2,
+                 n_dec_block: int = 3,
+                 dtype: torch.dtype = torch.float32) -> None:
         """
         :param d_embd: main model embedding size
         :param d_mem: memory vector size
@@ -46,16 +45,14 @@ class MemoryModel(torch.nn.Module):
         self.decoder = Decoder(DecoderBlock(d_embd=d_embd, d_mem=d_mem, dtype=dtype), n_dec_block)
         self.action_sampler = ActionSampler(d_mem=d_mem, dtype=dtype, memory_type=memory_type)
 
-    def forward(self, memory: torch.tensor, embeddings: torch.tensor, attn_mask: torch.tensor = None) \
-            -> tuple[torch.tensor, torch.tensor]:
+    def forward(self, state: State) -> tuple[torch.tensor, torch.tensor]:
         """
-        :param memory: existing memory
-        :param embeddings: high-level embeddings from the main model
-        :param attn_mask: attention mask (paddings) from tokenizer
+        :param state:
         :return: distribution parameters for positions and new memory
         """
-        enc_out = self.encoder(embeddings, attn_mask)
-        dec_out = self.decoder(memory, enc_out)
+        embeddings, attention_mask = state.embeddings, state.attention_mask
+        enc_out = self.encoder(embeddings, attention_mask)
+        dec_out = self.decoder(state.memory, enc_out, attention_mask)
         action = self.action_sampler(dec_out)
         return action
 
