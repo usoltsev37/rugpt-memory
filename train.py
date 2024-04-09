@@ -174,11 +174,14 @@ def iterative_training() -> None:
     memory_model_iterations = args.trainer_args.memory_model_iterations
 
     # First training iterations on LTM model
+    ltm_model.unfreeze()
+    memory_model.freeze()
+
     is_ltm_training = True
-    ltm_iteration_count = 0
-    memory_iteration_count = 0
-    batch_buffer = []
+    ltm_iteration_count, memory_iteration_count = 0, 0
     ltm_loss, memory_model_loss = 0., 0.
+
+    batch_buffer = []
 
     for batch in tqdm(train_dataloader, total=len(train_dataloader)):
         if is_ltm_training:
@@ -204,8 +207,6 @@ def iterative_training() -> None:
                 if memory_iteration_count >= memory_model_iterations:
                     memory_iteration_count = 0
                     is_ltm_training = True
-                    ltm_model.unfreeze()
-                    agent.model.freeze()
                     batch_buffer = []
 
                     # Logging and validation after cycle
@@ -221,7 +222,11 @@ def iterative_training() -> None:
 
                     if not train_cycle % args.checkpoint_cycle_interval:
                         save_checkpoint(train_cycle)
+
                     ltm_loss, memory_model_loss = 0., 0.
+
+                    ltm_model.unfreeze()
+                    agent.model.freeze()
 
 
 ###############################################################################
