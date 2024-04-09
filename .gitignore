@@ -100,3 +100,5 @@ logs/
 
 # Folder with repositories for articles from the overview
 repo/
+
+wandb/
