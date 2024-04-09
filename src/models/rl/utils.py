@@ -14,23 +14,15 @@ class State:
         self.batch_size = embeddings.shape[0]
 
     def __str__(self):
-        return f"""Memory
-    Shape: {self.memory.shape}
-    Tensor: {self.memory}
-Embeddings
-    Shape: {self.embeddings.shape}
-    Tensor: {self.embeddings}
-Attention mask
-    Shape: {self.attention_mask.shape}
-    Tensor: {self.attention_mask}
-    """
-
-    def __getitem__(self, item: int) -> 'State':
-        return State(self.memory[item], self.embeddings[item])
+        details = (f"{name}\n    Shape: {getattr(self, name).shape}\n    Tensor: {getattr(self, name)}"
+                   for name in ["memory", "embeddings", "attention_mask"])
+        return "\n".join(details)
 
     def to(self, device: torch.device) -> 'State':
-        self.memory = self.memory.to(device)
-        self.embeddings = self.embeddings.to(device)
+        for attr in ['memory', 'embeddings', 'attention_mask']:
+            tensor = getattr(self, attr)
+            if tensor.device != device:
+                setattr(self, attr, tensor.to(device))
         return self
 
 
@@ -48,19 +40,13 @@ class Action:
         self.batch_size = positions.shape[0]
 
     def __str__(self):
-        return f"""Positions
-    Shape: {self.positions.shape}
-    Tensor: {self.positions}
-Memory vectors
-    Shape: {self.memory_vectors.shape}
-    Tensor: {self.memory_vectors}
-    """
-
-    def __getitem__(self, item: int) -> 'Action':
-        return Action(self.positions[item], self.memory_vectors[item])
+        details = (f"{name}\n    Shape: {getattr(self, name).shape}\n    Tensor: {getattr(self, name)}"
+                   for name in ["positions", "memory_vectors"])
+        return "\n".join(details)
 
     def to(self, device: torch.device) -> 'Action':
-        """Move tensors to the specified device."""
-        self.positions = self.positions.to(device)
-        self.memory_vectors = self.memory_vectors.to(device)
+        for attr in ['positions', 'memory_vectors']:
+            tensor = getattr(self, attr)
+            if tensor.device != device:
+                setattr(self, attr, tensor.to(device))
         return self

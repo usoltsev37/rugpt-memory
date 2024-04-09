@@ -137,10 +137,11 @@ def train_ltm(ltm_model: LTM_GPT,
     memory_module.reset(batch_size)
 
     for step in tqdm(range(num_steps)):
+        optim.zero_grad()
         input_ids, attention_mask = _crop_batch(data['input_ids'][:, step, :].contiguous(),
                                                 data['attention_mask'][:, step, :].contiguous())
 
-        optim.zero_grad()
+        input_ids, attention_mask = input_ids.to(device), attention_mask.to(device)
 
         # Get high-level embeddings from LLM
         high_level_embeddings = ltm_model.get_embeddings(input_ids, attention_mask)
@@ -201,7 +202,8 @@ def iterative_training() -> None:
                 batch_buffer.append(batch)
             else:
                 batch_buffer.append(batch)
-                memory_model_episode_loss = train_rl(batch_buffer, agent, rl_optimizer, ltm_model, args.rl_params)
+                memory_model_episode_loss = train_rl(batch_buffer, agent, rl_optimizer, ltm_model, device,
+                                                     args.rl_params)
                 memory_model_loss += memory_model_episode_loss
                 memory_iteration_count += 1
                 if memory_iteration_count >= memory_model_iterations:
@@ -261,11 +263,10 @@ val_dataset = WikiDataset(data_path=dataset_path, split='val')
 ###############################################################################
 # Build the model
 ###############################################################################
-
+device = torch.device(args.device)
+dtype = torch.float16 if args.trainer_args.fp16 else torch.float32
 ltm_model, tokenizer = load_ltm_model(args)
-memory_model = MemoryModel(**asdict(args.memory_model_params))
-
-# Accelerate logic
+memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=dtype).cuda(device)
 
 ###############################################################################
 # Create optimizers

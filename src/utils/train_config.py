@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
-from marshmallow_dataclass import class_schema
+
+import torch
 import yaml
+from marshmallow_dataclass import class_schema
 
 
 @dataclass
@@ -63,6 +65,7 @@ class TrainerArgs:
 class TrainingArguments:
     experiment_name: str
     seed: int
+    device: str
     content_dir: str
     pretrained_model_name_or_path: str
     checkpoint_base_cache_dir: str

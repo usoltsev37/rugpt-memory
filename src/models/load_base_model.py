@@ -1,6 +1,7 @@
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
 from pathlib import Path
+
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.utils.logger_singleton import logger
 
@@ -10,13 +11,14 @@ def load_base_model(main_config):
 
     content_dir = Path(main_config.content_dir).resolve()
     checkpoint_base_cache_dir = Path(main_config.checkpoint_base_cache_dir).resolve()
+    dtype = torch.float16 if main_config.trainer_args.fp16 else torch.float32
 
     model = AutoModelForCausalLM.from_pretrained(
         main_config.pretrained_model_name_or_path,
         cache_dir=checkpoint_base_cache_dir,
         load_in_4bit=main_config.base_model_params.load_in_4bit,
         load_in_8bit=main_config.base_model_params.load_in_8bit,
-        torch_dtype=torch.float16,
+        torch_dtype=dtype,
         device_map='auto',
         low_cpu_mem_usage=True,
         offload_state_dict=True

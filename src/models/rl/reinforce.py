@@ -1,5 +1,3 @@
-import pickle
-
 import numpy as np
 import torch
 from torch import nn
@@ -7,14 +5,16 @@ from torch.distributions import Bernoulli, Categorical, Normal
 
 from src.models.rl.agent import Agent
 from src.models.rl.utils import Action, State
+from src.utils.logger_singleton import logger
 from src.utils.train_config import RLParams
 
 
 class REINFORCE:
     def __init__(self, agent: Agent,
                  optimizer: torch.optim,
+                 device: torch.device,
                  train_config: RLParams):
-        self.device = torch.device(train_config.device)
+        self.device = device
         self.agent = agent.to(self.device)
         self.optim = optimizer
 
@@ -35,6 +35,8 @@ class REINFORCE:
         """
         with torch.no_grad():
             action, proba, distr = self.agent.act(state.to(self.device))
+
+        # todo: distr to cpu
         return action.to(torch.device("cpu")), proba.cpu(), distr
 
     def _get_distr_from_list(self, distr_batch: list[dict], ids: [int]) -> dict:
@@ -91,7 +93,7 @@ class REINFORCE:
                 kld = self.agent.compute_kld(old_distr_batch, distr)
 
             if self.kl_target is not None and torch.mean(kld) > self.kl_target:
-                print(f"Early stopping! KLD is {torch.mean(kld)} on iteration {_ + 1}")
+                logger.warning(f"Early stopping! KLD is {torch.mean(kld)} on iteration {_ + 1}")
                 return np.mean(losses) if losses else None
 
             ratio = torch.exp(cur_proba - old_proba_batch)
@@ -107,7 +109,3 @@ class REINFORCE:
             losses.append(loss.item())
 
         return np.mean(losses)
-
-    def save(self):
-        with open("agent.pkl", "wb") as f:
-            pickle.dump(self.agent, f)

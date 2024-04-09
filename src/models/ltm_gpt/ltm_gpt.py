@@ -12,15 +12,17 @@ class LTM_GPT(GPT2LMHeadModel):
     def __init__(self,
                  model_: GPT2LMHeadModel,
                  d_mem: int,
-                 cnt_blocks_with_memory=2):
+                 device: torch.device,
+                 dtype: torch.dtype,
+                 cnt_blocks_with_memory: int = 2) -> None:
         super().__init__(model_.config)
 
         self.labels = None
         self.max_seq_length = model_.config.n_ctx
         self.transformer_ltm_blocks = nn.ModuleList([
-            LTMGPT2Block(model_.transformer.h[-cnt_blocks_with_memory + i], d_mem) for i in
+            LTMGPT2Block(model_.transformer.h[-cnt_blocks_with_memory + i], d_mem, dtype=dtype) for i in
             range(cnt_blocks_with_memory)
-        ])
+        ]).cuda(device=device)
         self.transformer = model_.transformer
         self.transformer.h = model_.transformer.h[:-cnt_blocks_with_memory]
 
@@ -39,7 +41,7 @@ class LTM_GPT(GPT2LMHeadModel):
                    hidden_states: torch.tensor,
                    attention_mask: torch.tensor,
                    memory: torch.Tensor,
-                   reward_for_agent: bool = False):
+                   reward_for_agent: bool = False) -> torch.Tensor:
 
         for block in self.transformer_ltm_blocks:
             hidden_states = block(hidden_states, attention_mask, memory)

@@ -12,7 +12,7 @@ class LTMGPT2Block(nn.Module):
                  d_mem: int,
                  num_heads: int = 4,
                  dropout: float = 0.1,
-                 dtype: torch.dtype = torch.float32):
+                 dtype: torch.dtype = torch.float32) -> None:
         super().__init__()
         self.gpt2_block = gpt2_block
         self.d_mem = d_mem
@@ -55,8 +55,7 @@ class LTMGPT2Block(nn.Module):
     def forward(self,
                 hidden_states: torch.Tensor,
                 attention_mask: torch.Tensor,
-                memory: torch.Tensor):
-
+                memory: torch.Tensor) -> torch.Tensor:
         attention_mask = attention_mask[:, None, None, :]
         attention_mask = attention_mask.to(dtype=self.dtype)
         attention_mask = (1.0 - attention_mask) * torch.finfo(self.dtype).min
@@ -77,11 +76,8 @@ class LTMGPT2Block(nn.Module):
         )
 
         # Norm & Concat
-        x = torch.cat((residual, x), dim=-1)
-        if self.dtype == torch.float16:
-            x = self.ln1(x.float()).type(torch.float16)
-        else:
-            x = self.ln1(x)
+        x = x + residual
+        x = self.ln1(x)
 
         # DenseNetwork initialized with zeroes
         x = self.dense_network2(x)

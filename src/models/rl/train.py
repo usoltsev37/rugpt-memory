@@ -58,6 +58,7 @@ def train_rl(data: [dict],
              agent: Agent,
              optimizer: torch.optim,
              ltm_model: LTM_GPT,
+             device: torch.device,
              train_config: RLParams):
     """
     Training a memory model using reinforcement learning with a fixed LTM model.
@@ -66,8 +67,8 @@ def train_rl(data: [dict],
     :param ltm_model: LTM model with frozen weights
     :param train_config: config with training parameters of the REINFORCE algorithm
     """
-    env = LTMEnvironment(ltm_model, agent.num_vectors, agent.d_mem)
-    reinforce = REINFORCE(agent, optimizer, train_config)
+    env = LTMEnvironment(ltm_model, agent.num_vectors, agent.d_mem, train_config.max_steps_in_episode, device)
+    reinforce = REINFORCE(agent, optimizer, train_config=train_config, device=device)
 
     transitions = []
     for batch in data:

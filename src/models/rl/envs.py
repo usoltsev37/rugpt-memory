@@ -14,7 +14,8 @@ class LTMEnvironment:
                  ltm_model: LTM_GPT,
                  memory_num_vectors: int,
                  d_mem: int,
-                 max_steps_per_episode: int = 3) -> None:
+                 max_steps_per_episode: int,
+                 device: torch.device) -> None:
         self.attention_mask = None
         self.data = None
         self.embeddings = None
@@ -27,6 +28,7 @@ class LTMEnvironment:
         self.max_steps_per_episode = max_steps_per_episode
         self.max_seq_length = ltm_model.max_seq_length
         self.memory_module = MemoryModule(num_vectors=memory_num_vectors, d_mem=d_mem)
+        self.device = device
 
     def reset(self, data: dict) -> State:
         """Returns a new state in the form of empty memory and high-level embeddings of text (max_seq_len)
@@ -43,7 +45,9 @@ class LTMEnvironment:
         input_ids, attention_mask = (data['input_ids'][:, self.cur_step, :].contiguous(),
                                      data['attention_mask'][:, self.cur_step, :].contiguous())
 
-        embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
+        input_ids, attention_mask = input_ids.to(self.device)
+        with torch.no_grad():
+            embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
 
         self.embeddings = embeddings
         self.attention_mask = attention_mask

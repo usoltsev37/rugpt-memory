@@ -42,7 +42,7 @@ class DecoderBlock(nn.Module):
     def __init__(self,
                  d_mem: int,
                  d_embd: int = 5120,
-                 n_head: int = 2,
+                 n_head: int = 4,
                  dtype: torch.dtype = torch.float32,
                  dropout: float = 0.1
                  ) -> None:
@@ -58,7 +58,7 @@ class DecoderBlock(nn.Module):
         self.dtype = dtype
         self.dense_network_for_embeddings = DenseNetwork(n_hid_layers=1,
                                                          input_dim=d_embd,
-                                                         hidden_dim=d_embd * 4,
+                                                         hidden_dim=d_embd,
                                                          out_dim=d_mem,
                                                          dropout=dropout,
                                                          dtype=dtype)
