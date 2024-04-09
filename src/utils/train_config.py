@@ -11,7 +11,6 @@ class BaseModelParams:
 
 @dataclass
 class LTMParams:
-    d_mem: int
     cnt_blocks_with_memory: int = field(default=2)
 
 
@@ -27,16 +26,12 @@ class MemoryModelParams:
 
 @dataclass
 class RLParams:
-    lr: float = field(default=1e-4)
-    max_steps_in_episode: int = field(default=5)
-    iterations: int = field(default=10)
+    max_steps_in_episode: int
+    batches_per_update: int
+    batch_size: int
+    min_transitions_per_update: int
     gamma: float = field(default=0.99)
-    min_transitions_per_update: int = field(default=256)
-    device: str = field(default="cpu")
-    agent_lr: float = field(default=1e-4)
     clip: float = field(default=0.2)
-    batches_per_update: int = field(default=10)
-    batch_size: int = field(default=2)
     entropy_coef: float = field(default=1e-2)
     clip_grad_norm: float = field(default=1.0)
     kl_target: float = field(default=0.03)
@@ -53,6 +48,7 @@ class SyntheticTaskEnvParams:
 @dataclass
 class TrainerArgs:
     warmup_steps: int
+    gradient_accumulation_steps: int
     fp16: bool
     num_train_epochs: int
     ltm_model_iterations: int
@@ -67,12 +63,10 @@ class TrainerArgs:
 class TrainingArguments:
     experiment_name: str
     seed: int
-    cuda: bool
-    dataset_path: str
-    output_dir: str
+    content_dir: str
     pretrained_model_name_or_path: str
     checkpoint_base_cache_dir: str
-    checkpoint_cycle_interval: int
+    checkpoint_interval: int
     max_eval_steps: int
     base_model_params: BaseModelParams
     memory_model_params: MemoryModelParams

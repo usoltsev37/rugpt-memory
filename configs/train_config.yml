@@ -1,0 +1,37 @@
+experiment_name: first_experiment
+seed: 42
+content_dir: '.'
+pretrained_model_name_or_path: openai-community/gpt2
+checkpoint_base_cache_dir: /home/julia/repos/rugpt_memory/checkpoints
+checkpoint_interval: 10
+max_eval_steps: 32
+
+base_model_params:
+  load_in_4bit: false
+  load_in_8bit: false
+
+memory_model_params:
+  num_vectors: 32
+  d_mem: 1280
+
+trainer_args:
+  warmup_steps: 0
+  gradient_accumulation_steps: 1
+  fp16: True
+  num_train_epochs: 1
+  ltm_model_iterations: 20
+  memory_model_iterations: 20
+  batch_size: 16
+  optimizer: 'adamw'
+  ltm_learning_rate: 1e-5
+  memory_model_learning_rate: 1e-5
+
+rl_params:
+  max_steps_in_episode: 50
+  batches_per_update: 10
+  batch_size: 16
+  min_transitions_per_update: 256
+
+
+ltm_params:
+  cnt_blocks_with_memory: 2

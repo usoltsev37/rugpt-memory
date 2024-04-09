@@ -99,7 +99,7 @@ def evaluate(dataset):
                                       model_max_length=ltm_model.max_seq_length,
                                       max_sequence_len_in_batch=ltm_model.max_seq_length * (
                                               args.rl_params.max_steps_in_episode + 1),
-                                      batch_size=args.trainer_params.batch_size,
+                                      batch_size=args.trainer_args.batch_size,
                                       shuffle=True)
     ltm_model.freeze()
     memory_model.freeze()
@@ -170,8 +170,8 @@ def iterative_training() -> None:
     """Iteratively train LTM and Memory models."""
     global train_cycle
 
-    ltm_model_iterations = args.trainer_params.ltm_model_iterations
-    memory_model_iterations = args.trainer_params.memory_model_iterations
+    ltm_model_iterations = args.trainer_args.ltm_model_iterations
+    memory_model_iterations = args.trainer_args.memory_model_iterations
 
     # First training iterations on LTM model
     is_ltm_training = True
@@ -198,7 +198,7 @@ def iterative_training() -> None:
                 batch_buffer.append(batch)
             else:
                 batch_buffer.append(batch)
-                memory_model_episode_loss = train_rl(batch_buffer, agent, ltm_model, args.rl_params)
+                memory_model_episode_loss = train_rl(batch_buffer, agent, rl_optimizer, ltm_model, args.rl_params)
                 memory_model_loss += memory_model_episode_loss
                 memory_iteration_count += 1
                 if memory_iteration_count >= memory_model_iterations:
@@ -242,21 +242,22 @@ wandb.init(project="rugpt-memory", name=args.experiment_name, config=asdict(args
 
 # Create run directory and directory for saving checkpoints
 run_name = f"run-{wandb.run.id}"
-run_dir = os.path.join(args.output_dir, run_name)
+run_dir = os.path.join(args.checkpoint_base_cache_dir, run_name)
 
 ###############################################################################
 # Load data
 ###############################################################################
-
-train_dataset = WikiDataset(data_path=args.dataset_path, split='train')
-val_dataset = WikiDataset(data_path=args.dataset_path, split='val')
+dataset_path = Path(args.content_dir) / 'data' / 'dataset'
+dataset_path.resolve()
+dataset_path = str(dataset_path)
+train_dataset = WikiDataset(data_path=dataset_path, split='train')
+val_dataset = WikiDataset(data_path=dataset_path, split='val')
 
 ###############################################################################
 # Build the model
 ###############################################################################
 
 ltm_model, tokenizer = load_ltm_model(args)
-# tokenizer.pad_token = tokenizer.eos_token
 memory_model = MemoryModel(**asdict(args.memory_model_params))
 
 # Accelerate logic
@@ -265,15 +266,15 @@ memory_model = MemoryModel(**asdict(args.memory_model_params))
 # Create optimizers
 ###############################################################################
 
-if args.trainer_params.optimizer.lower() == 'sgd':
-    ltm_optimizer = torch.optim.SGD(ltm_model.parameters(), lr=args.trainer_params.ltm_learning_rate)
-    rl_optimizer = torch.optim.SGD(memory_model.parameters(), lr=args.trainer_params.memory_model_learning_rate)
-elif args.trainer_params.optimizer.lower() == 'adam':
-    ltm_optimizer = torch.optim.Adam(ltm_model.parameters(), lr=args.trainer_params.ltm_learning_rate)
-    rl_optimizer = torch.optim.Adam(memory_model.parameters(), lr=args.trainer_params.memory_model_learning_rate)
-elif args.trainer_params.optimizer.lower() == 'adamw':
-    ltm_optimizer = torch.optim.AdamW(ltm_model.parameters(), lr=args.trainer_params.ltm_learning_rate)
-    rl_optimizer = torch.optim.AdamW(memory_model.parameters(), lr=args.trainer_params.memory_model_learning_rate)
+if args.trainer_args.optimizer.lower() == 'sgd':
+    ltm_optimizer = torch.optim.SGD(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
+    rl_optimizer = torch.optim.SGD(memory_model.parameters(), lr=args.trainer_args.memory_model_learning_rate)
+elif args.trainer_args.optimizer.lower() == 'adam':
+    ltm_optimizer = torch.optim.Adam(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
+    rl_optimizer = torch.optim.Adam(memory_model.parameters(), lr=args.trainer_args.memory_model_learning_rate)
+elif args.trainer_args.optimizer.lower() == 'adamw':
+    ltm_optimizer = torch.optim.AdamW(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
+    rl_optimizer = torch.optim.AdamW(memory_model.parameters(), lr=args.trainer_args.memory_model_learning_rate)
 
 logger.info('Starting the training process...')
 logger.info(f'Number of trainable parameters (LTM) = {get_model_param_count(ltm_model, trainable_only=True)}')
@@ -289,7 +290,7 @@ train_dataloader = EpochDataloader(train_dataset,
                                    model_max_length=ltm_model.max_seq_length,
                                    max_sequence_len_in_batch=ltm_model.max_seq_length * (
                                            args.rl_params.max_steps_in_episode + 1),
-                                   batch_size=args.trainer_params.batch_size, shuffle=True)
+                                   batch_size=args.trainer_args.batch_size, shuffle=True)
 
 agent = Agent(memory_model)
 
@@ -303,7 +304,7 @@ train_cycle = 0  # cycle of training ltm and memory_model
 try:
     for epoch in itertools.count(start=1):  # epoch == traverse over train dataset once
         iterative_training()
-        if epoch == args.trainer_params.num_train_epochs:
+        if epoch == args.trainer_args.num_train_epochs:
             logger.info('-' * 100)
             logger.info('End of training')
             break
@@ -316,7 +317,7 @@ ltm_model, tokenizer = load_ltm_model(args)
 memory_model = MemoryModel(**asdict(args.memory_model_params))
 
 # Run on test data
-test_dataset = WikiDataset(data_path=args.dataset_path,
+test_dataset = WikiDataset(data_path=dataset_path,
                            split='test')
 
 test_dataloader = EpochDataloader(test_dataset, tokenizer)
