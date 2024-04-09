@@ -16,8 +16,7 @@ class LTM_GPT(GPT2LMHeadModel):
         super().__init__(model_.config)
 
         self.labels = None
-        # self.max_seq_length = model_.config.n_ctx
-        self.max_seq_length = 10
+        self.max_seq_length = model_.config.n_ctx
         self.transformer_ltm_blocks = nn.ModuleList([
             LTMGPT2Block(model_.transformer.h[-cnt_blocks_with_memory + i], d_mem) for i in
             range(cnt_blocks_with_memory)

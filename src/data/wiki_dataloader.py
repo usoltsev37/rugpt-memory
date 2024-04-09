@@ -14,8 +14,8 @@ class EpochDataloader(DataLoader):
                  dataset: WikiDataset,
                  tokenizer: AutoTokenizer.from_pretrained,
                  model_max_length: int = 2048,
-                 max_sequence_len_in_batch: int = 2048 * 10,
-                 batch_size: int = 5,
+                 max_sequence_len_in_batch: int = 2048 * 30,
+                 batch_size: int = 16,
                  shuffle: bool = False,
                  **kwargs):
         self.iterator = None
