@@ -1,7 +1,6 @@
 experiment_name: first_experiment
 seed: 42
 device: cuda:1
-content_dir: '.'
 pretrained_model_name_or_path: openai-community/gpt2
 checkpoint_dir: /home/nikita_u/study/nir/repo/rugpt-memory/checkpoints
 checkpoint_base_cache_dir: /home/nikita_u/study/nir/repo/rugpt-memory/checkpoints/base/huggingface
