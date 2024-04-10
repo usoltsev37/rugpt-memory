@@ -142,7 +142,6 @@ class WikiDataset(Dataset):
         article_id = self.ids[item]
         path_to_file, offset = self.id_to_offset[article_id]
         full_path_to_file = Path(self.data_path) / path_to_file
-        print(full_path_to_file)
         with full_path_to_file.open('rb') as f:
             f.seek(offset)
             article = json.loads(f.readline())
