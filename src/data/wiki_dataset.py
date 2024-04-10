@@ -48,7 +48,7 @@ class WikiDataset(Dataset):
             with part_file.open('rb') as f:
                 for line in f:
                     article = json.loads(line)
-                    index[article['document_id']] = (part_file, offset)
+                    index[article['document_id']] = (part_file.name, offset)
                     offset += len(line)
 
         return index
@@ -105,7 +105,8 @@ class WikiDataset(Dataset):
             return []
 
         file_path, offset = file_path_offset
-        with file_path.open("rb") as f:
+        full_file_path = Path(self.data_path) / file_path
+        with full_file_path.open("rb") as f:
             f.seek(offset)
             return json.loads(f.readline())["texts"]
 
@@ -140,7 +141,9 @@ class WikiDataset(Dataset):
         """
         article_id = self.ids[item]
         path_to_file, offset = self.id_to_offset[article_id]
-        with path_to_file.open('rb') as f:
+        full_path_to_file = Path(self.data_path) / path_to_file
+        print(full_path_to_file)
+        with full_path_to_file.open('rb') as f:
             f.seek(offset)
             article = json.loads(f.readline())
             return self._add_context_to_article(article)
