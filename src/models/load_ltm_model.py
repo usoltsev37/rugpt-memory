@@ -13,6 +13,6 @@ def load_ltm_model(main_config) -> tuple[LTM_GPT, transformers.AutoTokenizer]:
     model = LTM_GPT(main_model,
                     cnt_blocks_with_memory=main_config.ltm_params.cnt_blocks_with_memory,
                     d_mem=main_config.memory_model_params.d_mem,
-                    device=main_config.device,
+                    device=torch.device(main_config.device),
                     dtype=dtype)
     return model, tokenizer
