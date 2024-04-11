@@ -38,11 +38,11 @@ class LTMGPT2Block(nn.Module):
             dtype=dtype
         )
 
-        self.ln1 = nn.LayerNorm(self.embed_dim * 2, dtype=dtype)
+        self.ln1 = nn.LayerNorm(self.embed_dim, dtype=dtype)
 
         self.dense_network2 = DenseNetwork(
             n_hid_layers=1,
-            input_dim=self.embed_dim * 2,
+            input_dim=self.embed_dim,
             hidden_dim=self.embed_dim * 4,
             out_dim=self.embed_dim,
             dropout=dropout,
@@ -59,6 +59,7 @@ class LTMGPT2Block(nn.Module):
         attention_mask = attention_mask[:, None, None, :]
         attention_mask = attention_mask.to(dtype=self.dtype)
         attention_mask = (1.0 - attention_mask) * torch.finfo(self.dtype).min
+        attention_mask = attention_mask.to(torch.device('cuda:1'))
 
         query = self.gpt2_block(hidden_states=hidden_states, attention_mask=attention_mask)[0]
 
