@@ -11,8 +11,8 @@ import torch.optim
 from tqdm import tqdm
 from transformers.trainer_pt_utils import get_model_param_count
 from transformers.trainer_utils import set_seed
+from torch.utils.tensorboard import SummaryWriter
 
-import wandb
 from src.data.wiki_dataloader import EpochDataloader
 from src.data.wiki_dataset import WikiDataset
 from src.models.load_ltm_model import load_ltm_model
@@ -24,6 +24,12 @@ from src.models.rl.train import train_rl
 from src.models.rl.utils import State
 from src.utils.logger_singleton import logger
 from src.utils.train_config import *
+
+# for training from proxy
+import ssl
+
+ssl._create_default_https_context = ssl._create_unverified_context
+os.environ['CURL_CA_BUNDLE'] = ''
 
 
 def load_trainable_parameters(model: nn.Module, filepath: str):
@@ -56,7 +62,7 @@ def save_model(model_name: str,
 
 def save_checkpoint(iteration: int):
     checkpoint_folder = f"checkpoint-{iteration}"
-    output_dir = os.path.join(run_dir, checkpoint_folder)
+    output_dir = run_dir / checkpoint_folder
     save_model("ltm", ltm_model, ltm_optimizer, output_dir, iteration)
     save_model("memory_model", memory_model, rl_optimizer, output_dir, iteration)
 
@@ -127,7 +133,8 @@ def _crop_batch(input_ids: torch.Tensor, attention_mask: torch.Tensor) -> tuple[
 def train_ltm(ltm_model: LTM_GPT,
               agent: Agent,
               optim: torch.optim.SGD | torch.optim.Adam | torch.optim.AdamW,
-              data: dict) -> float:
+              data: dict,
+              tensorboard_writer: SummaryWriter) -> float:
     ltm_loss = 0.
     batch_size, num_steps, seq_len = data['input_ids'].size()
 
@@ -163,11 +170,11 @@ def train_ltm(ltm_model: LTM_GPT,
         ltm_loss += loss.float().item()
 
     mean_loss_over_episode = ltm_loss / num_steps
-    wandb.log({"ltm_train_loss": mean_loss_over_episode})
+    tensorboard_writer.add_scalar("Loss/ltm_train_loss", mean_loss_over_episode)
     return mean_loss_over_episode
 
 
-def iterative_training() -> None:
+def iterative_training(tensorboard_writer: SummaryWriter) -> None:
     """Iteratively train LTM and Memory models."""
     global train_cycle
 
@@ -186,7 +193,7 @@ def iterative_training() -> None:
 
     for batch in tqdm(train_dataloader, total=len(train_dataloader)):
         if is_ltm_training:
-            ltm_episode_loss = train_ltm(ltm_model, agent, ltm_optimizer, batch)
+            ltm_episode_loss = train_ltm(ltm_model, agent, ltm_optimizer, batch, tensorboard_writer)
             ltm_loss += ltm_episode_loss
             ltm_iteration_count += 1
 
@@ -220,7 +227,7 @@ def iterative_training() -> None:
                     logger.info(f"""Training cycle {train_cycle} done.\nLTM train loss: {ltm_loss} \
                     \nLTM val loss: {val_loss}\nMemory model loss: {memory_model_loss}""")
 
-                    wandb.log({"ltm_val_loss": val_loss})
+                    tensorboard_writer.add_scalar("Loss/ltm_val_loss", val_loss)
 
                     if not train_cycle % args.checkpoint_cycle_interval:
                         save_checkpoint(train_cycle)
@@ -245,11 +252,10 @@ def init_arguments() -> argparse.Namespace:
 args = init_arguments()
 args = load_config(args.config)
 set_seed(args.seed)
-wandb.init(project="rugpt-memory", name=args.experiment_name, config=asdict(args))
 
 # Create run directory and directory for saving checkpoints
-run_name = f"run-{wandb.run.id}"
-run_dir = os.path.join(args.checkpoint_base_cache_dir, run_name)
+run_dir = Path(args.checkpoint_dir) / args.experiment_name / 'runs'
+tensorboard_writer = SummaryWriter(log_dir=run_dir)
 
 ###############################################################################
 # Load data
@@ -309,7 +315,7 @@ train_cycle = 0  # cycle of training ltm and memory_model
 
 try:
     for epoch in itertools.count(start=1):  # epoch == traverse over train dataset once
-        iterative_training()
+        iterative_training(tensorboard_writer)
         if epoch == args.trainer_args.num_train_epochs:
             logger.info('-' * 100)
             logger.info('End of training')
