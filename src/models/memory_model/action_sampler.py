@@ -22,17 +22,17 @@ class ActionSampler(nn.Module):
 
         self.dense_inp = DenseNetwork(n_hid_layers=1,
                                       input_dim=d_mem,
-                                      hidden_dim=d_mem * 4,
+                                      hidden_dim=d_mem * 2,
                                       out_dim=d_mem,
                                       dtype=dtype)
         self.dense_pos = DenseNetwork(n_hid_layers=1,
                                       input_dim=d_mem,
-                                      hidden_dim=d_mem * 4,
+                                      hidden_dim=d_mem * 2,
                                       out_dim=1,
                                       dtype=dtype)
         self.dense_mem_vec = DenseNetwork(n_hid_layers=1,
                                           input_dim=d_mem,
-                                          hidden_dim=d_mem * 4,
+                                          hidden_dim=d_mem * 2,
                                           out_dim=d_mem * 2,
                                           dtype=dtype)
 

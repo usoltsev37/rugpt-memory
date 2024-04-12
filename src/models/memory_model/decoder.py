@@ -68,7 +68,7 @@ class DecoderBlock(nn.Module):
         self.ln_2 = nn.LayerNorm(d_mem, dtype=dtype)
         self.mlp = DenseNetwork(n_hid_layers=1,
                                 input_dim=d_mem,
-                                hidden_dim=d_mem * 4,
+                                hidden_dim=d_mem * 2,
                                 out_dim=d_mem,
                                 dropout=dropout,
                                 dtype=dtype)
@@ -77,6 +77,6 @@ class DecoderBlock(nn.Module):
     def forward(self, memory: torch.tensor, embeddings: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
         embeddings = self.dense_network_for_embeddings(embeddings)
         memory = self.ln_1(memory)
-        attention_mask = (1 - attention_mask).bool()
+        attention_mask = (1 - attention_mask).bool().to(memory.device)
         memory = memory + self.attn(memory, embeddings, embeddings, key_padding_mask=attention_mask)[0]
         return memory + self.mlp(self.ln_2(memory))

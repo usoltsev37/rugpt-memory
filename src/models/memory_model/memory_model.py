@@ -73,7 +73,6 @@ class SyntheticTaskModel(torch.nn.Module):
         self.d_mem = d_mem
         self.num_vectors = num_vectors
         self.memory_type = memory_type
-
         self.fc1 = nn.Linear(d_mem, d_mem)
         self.conv1 = nn.Conv1d(d_mem, d_mem * 4, kernel_size=num_vectors, padding="same")
         self.conv2 = nn.Conv1d(d_mem * 4, d_mem, kernel_size=num_vectors, padding="same")
