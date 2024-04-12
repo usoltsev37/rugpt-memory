@@ -14,18 +14,32 @@ class LTM_GPT(nn.Module):
                  d_mem: int,
                  device: torch.device,
                  dtype: torch.dtype,
-                 cnt_blocks_with_memory: int = 2) -> None:
+                 cnt_blocks_with_memory: int = 2,
+                 ignore_index: int = 0) -> None:
         super().__init__()
+
+        assert torch.cuda.is_available()
+        assert torch.cuda.device_count() == 2
+
         self.labels = None
         self.max_seq_length = model_.config.n_ctx
+        self.dtype = dtype
+        self.ignore_index = ignore_index
+
         self.model_ = model_
+        self.transformer = self.model_.transformer
+        self.transformer.h = self.model_.transformer.h[:-cnt_blocks_with_memory]
+
         self.transformer_ltm_blocks = nn.ModuleList([
             LTMGPT2Block(self.model_.transformer.h[-cnt_blocks_with_memory + i], d_mem, dtype=dtype) for i in
             range(cnt_blocks_with_memory)
-        ]).cuda(device=device)
-        self.transformer = self.model_.transformer
+        ]).to(device)
+
         self.transformer.h = self.model_.transformer.h[:-cnt_blocks_with_memory]
         self.lm_head = self.model_.lm_head
+
+        self.first_device = next(self.transformer.parameters()).device
+        self.second_device = device
 
     def get_embeddings(self,
                        input_ids: torch.Tensor,
@@ -44,28 +58,23 @@ class LTM_GPT(nn.Module):
 
         for block in self.transformer_ltm_blocks:
             hidden_states = block(hidden_states, attention_mask, memory)
-        hidden_states = self.transformer.ln_f(hidden_states)
-        if not reward_for_agent:
-            lm_logits = self.lm_head(hidden_states)
-            self.labels = self.labels.to(lm_logits.device)
 
+        lm_logits = self.lm_head(hidden_states)
+
+        if not reward_for_agent:
+            self.labels = self.labels.to(lm_logits.device)
             shift_logits = lm_logits[..., :-1, :].contiguous()
             shift_labels = self.labels[..., 1:].contiguous()
 
-            loss_fct = CrossEntropyLoss(reduction='none', ignore_index=0)
-
-            loss = loss_fct(shift_logits.flatten(0, 1), shift_labels.flatten(0, 1))
-            loss = loss.view(self.labels.shape[0], self.hidden_states.shape[1] - 1).mean()
+            loss_fct = CrossEntropyLoss(ignore_index=self.ignore_index)
+            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
             return loss
         else:
             # todo: add mean cross entropy over text
-            lm_logits = self.lm_head(hidden_states)
-            self.labels = self.labels.to(lm_logits.device)
-
             shift_logits = lm_logits[..., :-1, :].contiguous()
             shift_labels = self.labels[..., 1:].contiguous()
 
-            loss_fct = CrossEntropyLoss(reduction='none', ignore_index=0)
+            loss_fct = CrossEntropyLoss(reduction='none', ignore_index=self.ignore_index)
 
             loss = loss_fct(shift_logits.flatten(0, 1), shift_labels.flatten(0, 1))
             loss = loss.view(self.labels.shape[0], self.hidden_states.shape[1] - 1).mean(dim=1)
@@ -73,24 +82,21 @@ class LTM_GPT(nn.Module):
 
     def freeze(self) -> None:
         self.eval()
-        for p in self.transformer.ln_f.parameters():
+        for p in self.parameters():
             p.requires_grad = False
-        for p in self.lm_head.parameters():
-            p.requires_grad = False
-        for n, p in self.transformer_ltm_blocks.named_parameters():
-            if 'gpt2_block' in n and 'lora' not in n:
-                pass
-            else:
-                p.requires_grad = False
 
     def unfreeze(self) -> None:
         self.train()
-        for n, p in self.transformer_ltm_blocks.named_parameters():
-            if 'gpt2_block' in n and 'lora' not in n:
-                pass
-            else:
-                p.requires_grad = True
-        for p in self.transformer.ln_f.parameters():
-            p.requires_grad = True
+
         for p in self.lm_head.parameters():
             p.requires_grad = True
+
+        for p in self.transformer.ln_f.parameters():
+            p.requires_grad = True
+
+        for name, param in self.transformer_ltm_blocks.named_parameters():
+            if 'gpt2_block' in name:
+                if 'lora' in name:
+                    param.requires_grad = True
+            else:
+                param.requires_grad = True
