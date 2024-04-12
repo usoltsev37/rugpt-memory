@@ -7,17 +7,20 @@ from marshmallow_dataclass import class_schema
 
 @dataclass
 class BaseModelParams:
+    add_lora: bool = True
     load_in_4bit: bool = field(default=False)
     load_in_8bit: bool = field(default=False)
 
 
 @dataclass
 class LTMParams:
+    device: str
     cnt_blocks_with_memory: int = field(default=2)
 
 
 @dataclass
 class MemoryModelParams:
+    device: str
     num_vectors: int
     d_mem: int
     memory_type: str = field(default="conservative")
@@ -28,7 +31,6 @@ class MemoryModelParams:
 
 @dataclass
 class RLParams:
-    max_steps_in_episode: int
     batches_per_update: int
     batch_size: int
     min_transitions_per_update: int
@@ -41,8 +43,8 @@ class RLParams:
 
 @dataclass
 class SyntheticTaskEnvParams:
-    d_mem: int = field(default=5)
-    num_vectors: int = field(default=3)
+    d_mem: int
+    num_vectors: int
     memory_type: str = field(default="conservative")
     max_steps: int = field(default=10)
 
@@ -56,6 +58,7 @@ class TrainerArgs:
     ltm_model_iterations: int
     memory_model_iterations: int
     batch_size: int
+    cut_by_shortest_article: bool
     optimizer: str
     ltm_learning_rate: float
     memory_model_learning_rate: float
@@ -65,7 +68,6 @@ class TrainerArgs:
 class TrainingArguments:
     experiment_name: str
     seed: int
-    device: str
     content_dir: str
     pretrained_model_name_or_path: str
     checkpoint_base_cache_dir: str
