@@ -77,7 +77,7 @@ class LTM_GPT(nn.Module):
             loss_fct = CrossEntropyLoss(reduction='none', ignore_index=self.ignore_index)
 
             loss = loss_fct(shift_logits.flatten(0, 1), shift_labels.flatten(0, 1))
-            loss = loss.view(self.labels.shape[0], self.hidden_states.shape[1] - 1).mean(dim=1)
+            loss = -loss.view(self.labels.shape[0], self.hidden_states.shape[1] - 1).mean(dim=1)
             return loss
 
     def freeze(self) -> None:
@@ -91,12 +91,10 @@ class LTM_GPT(nn.Module):
         for p in self.lm_head.parameters():
             p.requires_grad = True
 
-        for p in self.transformer.ln_f.parameters():
-            p.requires_grad = True
-
         for name, param in self.transformer_ltm_blocks.named_parameters():
             if 'gpt2_block' in name:
                 if 'lora' in name:
                     param.requires_grad = True
             else:
                 param.requires_grad = True
+
