@@ -9,10 +9,11 @@ from src.utils.logger_singleton import logger
 def load_ltm_model(main_config) -> tuple[LTM_GPT, transformers.AutoTokenizer]:
     logger.info('Loading LTM model...')
     main_model, tokenizer = load_base_model(main_config)
+    tokenizer.padding_side = 'right'
     dtype = torch.float16 if main_config.trainer_args.fp16 else torch.float32
     model = LTM_GPT(main_model,
                     cnt_blocks_with_memory=main_config.ltm_params.cnt_blocks_with_memory,
                     d_mem=main_config.memory_model_params.d_mem,
-                    device=torch.device(main_config.device),
+                    device=torch.device(main_config.ltm_params.device),
                     dtype=dtype)
     return model, tokenizer
