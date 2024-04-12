@@ -42,7 +42,6 @@ def load_base_model(main_config):
         param.requires_grad = False
         if param.dtype == torch.float32:
             param.data = param.data.to(dtype)
-            torch.nn.init.zeros_(param.data)
 
     # optimization
     model.gradient_checkpointing_enable()  # memory optimization: only store a small subset of activations, re-compute the rest.

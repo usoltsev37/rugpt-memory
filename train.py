@@ -6,6 +6,7 @@ import random
 from dataclasses import asdict
 from pathlib import Path
 
+import torch
 import torch.nn as nn
 import torch.optim
 
@@ -303,7 +304,7 @@ dtype = torch.float16 if args.trainer_args.fp16 else torch.float32
 ltm_model, tokenizer = load_ltm_model(args)
 
 memory_model_device = torch.device(args.memory_model_params.device)
-memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=torch.float32).to(memory_model_device)
+memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=dtype).to(memory_model_device)
 
 ###############################################################################
 # Create optimizers

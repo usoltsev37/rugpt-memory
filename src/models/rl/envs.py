@@ -1,5 +1,3 @@
-import random
-
 import torch
 import torch.nn.functional as F
 
@@ -7,11 +5,6 @@ from src.models.ltm_gpt.ltm_gpt import LTM_GPT
 from src.models.memory_model.memory import MemoryModule
 from src.models.rl.utils import Action, State
 from src.utils.train_config import SyntheticTaskEnvParams
-
-
-def _crop_batch(input_ids: torch.Tensor, attention_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    crop_by_len = 10
-    return input_ids[:, :crop_by_len], attention_mask[:, :crop_by_len]
 
 
 class LTMEnvironment:
@@ -46,8 +39,8 @@ class LTMEnvironment:
         self.cur_step = 0
         self.n_steps = n_steps
 
-        input_ids, attention_mask = _crop_batch(data['input_ids'][:, self.cur_step, :].contiguous(),
-                                                data['attention_mask'][:, self.cur_step, :].contiguous())
+        input_ids, attention_mask = (data['input_ids'][:, self.cur_step, :].contiguous(),
+                                     data['attention_mask'][:, self.cur_step, :].contiguous())
 
         # Get embeddings for the first state
         input_ids, attention_mask = input_ids.to(self.ltm_model.first_device), attention_mask.to(
@@ -72,12 +65,12 @@ class LTMEnvironment:
 
         if self.cur_step >= self.n_steps:
             done = True
-            embeddings = torch.zeros_like(self.embeddings)
-            attention_mask = torch.zeros_like(self.attention_mask)
+            self.embeddings = torch.zeros_like(self.embeddings)
+            self.attention_mask = torch.zeros_like(self.attention_mask)
         else:
             done = False
-            input_ids, attention_mask = _crop_batch(self.data['input_ids'][:, self.cur_step, :].contiguous(),
-                                                    self.data['attention_mask'][:, self.cur_step, :].contiguous())
+            input_ids, attention_mask = (self.data['input_ids'][:, self.cur_step, :].contiguous(),
+                                         self.data['attention_mask'][:, self.cur_step, :].contiguous())
 
             embeddings = self.ltm_model.get_embeddings(input_ids.to(self.ltm_model.first_device),
                                                        attention_mask.to(self.ltm_model.first_device))
