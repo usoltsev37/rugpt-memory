@@ -1,6 +1,7 @@
+from typing import Union
+
 import torch
 import torch.nn.functional as F
-from typing import Union
 
 from src.models.rl.utils import Action
 
@@ -8,8 +9,10 @@ from src.models.rl.utils import Action
 class MemoryModule:
     """External memory for the language model."""
 
-    def __init__(self, d_mem: int, num_vectors: int, dtype: Union[torch.float16, torch.float32],
-                 memory_type: str = "conservative", ):
+    def __init__(self, d_mem: int,
+                 num_vectors: int,
+                 dtype: Union[torch.float16, torch.float32],
+                 memory_type: str = "conservative"):
         """Initialize the MemoryModule.
 
         The memory's dimensions are [batch_size x num_vectors x d_mem].
