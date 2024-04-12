@@ -1,3 +1,5 @@
+import random
+
 import torch
 import torch.nn.functional as F
 
@@ -7,6 +9,11 @@ from src.models.rl.utils import Action, State
 from src.utils.train_config import SyntheticTaskEnvParams
 
 
+def _crop_batch(input_ids: torch.Tensor, attention_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    crop_by_len = 10
+    return input_ids[:, :crop_by_len], attention_mask[:, :crop_by_len]
+
+
 class LTMEnvironment:
     """Memory model training environment. The reward and state come from the LTM model."""
 
@@ -14,8 +21,7 @@ class LTMEnvironment:
                  ltm_model: LTM_GPT,
                  memory_num_vectors: int,
                  d_mem: int,
-                 max_steps_per_episode: int,
-                 device: torch.device) -> None:
+                 dtype: torch.dtype = torch.float32) -> None:
         self.attention_mask = None
         self.data = None
         self.embeddings = None
@@ -25,10 +31,8 @@ class LTMEnvironment:
         self.cur_state = None
 
         self.ltm_model = ltm_model
-        self.max_steps_per_episode = max_steps_per_episode
         self.max_seq_length = ltm_model.max_seq_length
-        self.memory_module = MemoryModule(num_vectors=memory_num_vectors, d_mem=d_mem)
-        self.device = device
+        self.memory_module = MemoryModule(num_vectors=memory_num_vectors, d_mem=d_mem, dtype=dtype)
 
     def reset(self, data: dict) -> State:
         """Returns a new state in the form of empty memory and high-level embeddings of text (max_seq_len)
@@ -42,42 +46,46 @@ class LTMEnvironment:
         self.cur_step = 0
         self.n_steps = n_steps
 
-        input_ids, attention_mask = (data['input_ids'][:, self.cur_step, :].contiguous(),
-                                     data['attention_mask'][:, self.cur_step, :].contiguous())
+        input_ids, attention_mask = _crop_batch(data['input_ids'][:, self.cur_step, :].contiguous(),
+                                                data['attention_mask'][:, self.cur_step, :].contiguous())
 
-        input_ids, attention_mask = input_ids.to(self.device)
-        with torch.no_grad():
-            embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
+        # Get embeddings for the first state
+        input_ids, attention_mask = input_ids.to(self.ltm_model.first_device), attention_mask.to(
+            self.ltm_model.first_device)
+        embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
 
-        self.embeddings = embeddings
+        self.embeddings = embeddings.cpu()
         self.attention_mask = attention_mask
         self.memory_module.reset(bs)
 
-        return State(self.memory_module.memory, embeddings, attention_mask)
+        return State(self.memory_module.memory, self.embeddings, attention_mask)
 
     def step(self, action: Action) -> tuple[State, torch.Tensor, bool]:
         self.cur_step += 1
 
-        reward = self.ltm_model.get_output(self.embeddings,
-                                           self.attention_mask,
-                                           self.memory_module.memory, reward_for_agent=True)
+        reward = self.ltm_model.get_output(self.embeddings.to(self.ltm_model.second_device),
+                                           self.attention_mask.to(self.ltm_model.second_device),
+                                           self.memory_module.memory.to(self.ltm_model.second_device),
+                                           reward_for_agent=True)
+
         new_memory = self.memory_module.update(action)
 
-        if self.cur_step > self.n_steps or self.cur_step == self.max_steps_per_episode:
+        if self.cur_step >= self.n_steps:
             done = True
             embeddings = torch.zeros_like(self.embeddings)
             attention_mask = torch.zeros_like(self.attention_mask)
         else:
             done = False
-            input_ids, attention_mask = (self.data['input_ids'][:, self.cur_step, :].contiguous(),
-                                         self.data['attention_mask'][:, self.cur_step, :].contiguous())
+            input_ids, attention_mask = _crop_batch(self.data['input_ids'][:, self.cur_step, :].contiguous(),
+                                                    self.data['attention_mask'][:, self.cur_step, :].contiguous())
 
-            embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
+            embeddings = self.ltm_model.get_embeddings(input_ids.to(self.ltm_model.first_device),
+                                                       attention_mask.to(self.ltm_model.first_device))
 
-            self.embeddings = embeddings
+            self.embeddings = embeddings.cpu()
             self.attention_mask = attention_mask
 
-        return State(new_memory, embeddings, attention_mask), reward, done
+        return State(new_memory, self.embeddings, self.attention_mask), reward, done
 
 
 class SyntheticTaskEnv:

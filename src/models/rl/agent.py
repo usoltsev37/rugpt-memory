@@ -20,6 +20,7 @@ class Agent(nn.Module):
         self.d_mem = memory_model.d_mem
         self.num_vectors = memory_model.num_vectors
         self.memory_type = memory_model.memory_type
+        self.device = next(self.model.parameters()).device
 
     def _compute_log_probability(self, pos_distr: Categorical | Bernoulli,
                                  log_probability_normal_distr: torch.Tensor,

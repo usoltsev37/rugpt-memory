@@ -12,11 +12,11 @@ from src.utils.train_config import RLParams
 class REINFORCE:
     def __init__(self, agent: Agent,
                  optimizer: torch.optim,
-                 device: torch.device,
                  train_config: RLParams):
-        self.device = device
-        self.agent = agent.to(self.device)
+
+        self.agent = agent
         self.optim = optimizer
+        self.device = self.agent.device
 
         self.clip = train_config.clip
         self.batches_per_update = train_config.batches_per_update
@@ -41,19 +41,19 @@ class REINFORCE:
 
     def _get_distr_from_list(self, distr_batch: list[dict], ids: [int]) -> dict:
         selected_distributions = [distr_batch[i] for (i, _) in ids]
-        probs = torch.stack([d["pos_distr"].probs[j] for d, (_, j) in zip(selected_distributions, ids)])
-        loc = torch.stack([d["normal_distr"].loc[j] for d, (_, j) in zip(selected_distributions, ids)])
-        scale = torch.stack([d["normal_distr"].scale[j] for d, (_, j) in zip(selected_distributions, ids)])
+        probs = torch.stack([d["pos_distr"].probs[j] for d, (_, j) in zip(selected_distributions, ids)]).to(self.device)
+        loc = torch.stack([d["normal_distr"].loc[j] for d, (_, j) in zip(selected_distributions, ids)]).to(self.device)
+        scale = torch.stack([d["normal_distr"].scale[j] for d, (_, j) in zip(selected_distributions, ids)]).to(
+            self.device)
         pos_distr_cls = Categorical if self.agent.memory_type == "conservative" else Bernoulli
         pos_distr = pos_distr_cls(probs.detach())
         normal_distr = Normal(loc.detach(), scale.detach())
-
         return {"pos_distr": pos_distr, "normal_distr": normal_distr}
 
     @staticmethod
     def select_state_batch(states: [State], ids: [(int, int)]) -> State:
         selected_states = [states[i] for (i, _) in ids]
-        embeddings = torch.stack([s.embeddings[j] for s, (_, j) in zip(selected_states, ids)])
+        embeddings = torch.stack([s.embeddings[j] for s, (_, j) in zip(selected_states, ids)], )
         attention_mask = torch.stack([s.attention_mask[j] for s, (_, j) in zip(selected_states, ids)])
         memory = torch.stack([s.memory[j] for s, (_, j) in zip(selected_states, ids)])
         return State(memory.detach(), embeddings.detach(), attention_mask.detach())
@@ -73,14 +73,11 @@ class REINFORCE:
         :return: the average loss of the update.
         """
         state, action, reward, old_proba, old_distr = zip(*transitions)
-        num_transitions = len(state)
-        steps = np.cumsum([s.batch_size for s in state])
+        bs, num_transitions = state[0].memory.shape[0], len(state)
         losses = []
         for _ in range(self.batches_per_update):
-            first_idx = np.random.choice(range(num_transitions), self.batch_size, replace=True)
-            sampled_batches = [state[i].batch_size for i in first_idx]
-            second_idx = [np.random.randint(0, bs) for bs in sampled_batches]
-            ids = list(zip(first_idx, second_idx))
+            ids = np.random.choice(range(num_transitions * bs), self.batch_size, replace=False)
+            ids = [(idx // bs, idx % bs) for idx in ids]
             state_batch = self.select_state_batch(state, ids).to(self.device)
             action_batch = self.select_action_batch(action, ids).to(self.device)
             reward_batch = torch.stack([reward[i][j] for (i, j) in ids]).detach().to(self.device)
