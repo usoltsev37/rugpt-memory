@@ -19,6 +19,7 @@ class MemoryModel(torch.nn.Module):
                  d_embd: int,
                  d_mem: int,
                  num_vectors: int,
+                 device: torch.device,
                  memory_type: str = "conservative",
                  n_enc_block: int = 2,
                  n_dec_block: int = 3,
@@ -41,6 +42,7 @@ class MemoryModel(torch.nn.Module):
         self.num_vectors = num_vectors
         self.memory_type = memory_type
         self.dtype = dtype
+        self.device = device
         self.encoder = Encoder(EncoderBlock(d_embd=d_embd, dtype=dtype), n_enc_block)
         self.decoder = Decoder(DecoderBlock(d_embd=d_embd, d_mem=d_mem, dtype=dtype), n_dec_block)
         self.action_sampler = ActionSampler(d_mem=d_mem, dtype=dtype, memory_type=memory_type)
