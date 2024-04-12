@@ -1,5 +1,3 @@
-from typing import Union
-
 import torch
 import torch.nn.functional as F
 
@@ -11,7 +9,7 @@ class MemoryModule:
 
     def __init__(self, d_mem: int,
                  num_vectors: int,
-                 dtype: Union[torch.float16, torch.float32],
+                 dtype: torch.dtype,
                  memory_type: str = "conservative"):
         """Initialize the MemoryModule.
 
