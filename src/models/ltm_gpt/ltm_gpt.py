@@ -75,10 +75,13 @@ class LTM_GPT(nn.Module):
             shift_labels = self.labels[..., 1:].contiguous()
 
             loss_fct = CrossEntropyLoss(reduction='none', ignore_index=self.ignore_index)
+            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss = loss.view(self.labels.shape[0], self.hidden_states.shape[1] - 1)
 
-            loss = loss_fct(shift_logits.flatten(0, 1), shift_labels.flatten(0, 1))
-            loss = -loss.view(self.labels.shape[0], self.hidden_states.shape[1] - 1).mean(dim=1)
-            return loss
+            mask = loss != 0
+            not_ignore_index_count = torch.sum(mask, dim=1)
+            loss = loss.sum(dim=-1) / not_ignore_index_count
+            return -loss
 
     def freeze(self) -> None:
         self.eval()
