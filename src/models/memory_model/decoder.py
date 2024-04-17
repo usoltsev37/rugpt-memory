@@ -56,9 +56,9 @@ class DecoderBlock(nn.Module):
         super().__init__()
         self.d_mem = d_mem
         self.dtype = dtype
-        self.dense_network_for_embeddings = DenseNetwork(n_hid_layers=1,
+        self.dense_network_for_embeddings = DenseNetwork(n_hid_layers=0,
                                                          input_dim=d_embd,
-                                                         hidden_dim=d_embd,
+                                                         hidden_dim=d_mem,
                                                          out_dim=d_mem,
                                                          dropout=dropout,
                                                          dtype=dtype)
@@ -66,9 +66,9 @@ class DecoderBlock(nn.Module):
         self.ln_1 = nn.LayerNorm(d_mem, dtype=dtype)
         self.attn = nn.MultiheadAttention(d_mem, n_head, dropout, batch_first=True, dtype=dtype)
         self.ln_2 = nn.LayerNorm(d_mem, dtype=dtype)
-        self.mlp = DenseNetwork(n_hid_layers=1,
+        self.mlp = DenseNetwork(n_hid_layers=0,
                                 input_dim=d_mem,
-                                hidden_dim=d_mem * 2,
+                                hidden_dim=d_mem,
                                 out_dim=d_mem,
                                 dropout=dropout,
                                 dtype=dtype)

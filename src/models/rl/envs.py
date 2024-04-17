@@ -48,7 +48,7 @@ class LTMEnvironment:
         embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
 
         self.embeddings = embeddings.cpu()
-        self.attention_mask = attention_mask
+        self.attention_mask = attention_mask.cpu()
         self.memory_module.reset(bs)
 
         return State(self.memory_module.memory, self.embeddings, attention_mask)

@@ -41,7 +41,7 @@ class EncoderBlock(nn.Module):
 
     def __init__(self,
                  d_embd: int = 5120,
-                 d_hid: int = 5120 * 2,
+                 d_hid: int = 5120 // 8,
                  n_head: int = 4,
                  dtype: torch.dtype = torch.float32,
                  dropout: float = 0.1
@@ -66,7 +66,13 @@ class EncoderBlock(nn.Module):
 
     def forward(self, x: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
         x = self.ln_1(x)
-        attn_mask = torch.triu(torch.full((x.shape[1], x.shape[1]), 1.), diagonal=1).bool().to(x.device)
-        x = x + self.attn(x, x, x, is_causal=True, attn_mask=attn_mask, key_padding_mask=(1 - attention_mask).bool())[
+        attn_mask = torch.triu(torch.full((x.shape[1], x.shape[1]), 1.), diagonal=1).to(x.device)
+        # zero_rows = (attention_mask == 0).all(dim=1)
+        # attention_mask_copy = attention_mask.copy()
+        # attention_mask_copy[zero_rows, 0] = 1
+        # key_padding_mask = (1 - attention_mask_copy).bool()
+        key_padding_mask = (1 - attention_mask).bool()
+
+        x = x + self.attn(x, x, x, is_causal=True, attn_mask=attn_mask, key_padding_mask=key_padding_mask)[
             0]
         return x + self.mlp(self.ln_2(x))

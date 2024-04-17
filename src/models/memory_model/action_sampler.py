@@ -20,19 +20,19 @@ class ActionSampler(nn.Module):
         self.memory_type = memory_type
         self.dtype = dtype
 
-        self.dense_inp = DenseNetwork(n_hid_layers=1,
+        self.dense_inp = DenseNetwork(n_hid_layers=0,
                                       input_dim=d_mem,
-                                      hidden_dim=d_mem * 2,
+                                      hidden_dim=d_mem,
                                       out_dim=d_mem,
                                       dtype=dtype)
-        self.dense_pos = DenseNetwork(n_hid_layers=1,
+        self.dense_pos = DenseNetwork(n_hid_layers=0,
                                       input_dim=d_mem,
-                                      hidden_dim=d_mem * 2,
+                                      hidden_dim=d_mem,
                                       out_dim=1,
                                       dtype=dtype)
-        self.dense_mem_vec = DenseNetwork(n_hid_layers=1,
+        self.dense_mem_vec = DenseNetwork(n_hid_layers=0,
                                           input_dim=d_mem,
-                                          hidden_dim=d_mem * 2,
+                                          hidden_dim=d_mem,
                                           out_dim=d_mem * 2,
                                           dtype=dtype)
 

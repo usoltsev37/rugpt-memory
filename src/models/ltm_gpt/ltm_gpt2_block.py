@@ -22,9 +22,9 @@ class LTMGPT2Block(nn.Module):
         assert dtype in [torch.float16, torch.float32]
 
         self.dense_network1 = DenseNetwork(
-            n_hid_layers=1,
+            n_hid_layers=0,
             input_dim=d_mem,
-            hidden_dim=self.embed_dim // 2,
+            hidden_dim=d_mem,
             out_dim=self.embed_dim,
             dtype=dtype,
             dropout=dropout,
@@ -41,9 +41,9 @@ class LTMGPT2Block(nn.Module):
         self.ln1 = nn.LayerNorm(self.embed_dim, dtype=dtype)
 
         self.dense_network2 = DenseNetwork(
-            n_hid_layers=1,
+            n_hid_layers=0,
             input_dim=self.embed_dim,
-            hidden_dim=self.embed_dim * 2,
+            hidden_dim=self.embed_dim // 8,
             out_dim=self.embed_dim,
             dropout=dropout,
             dtype=dtype,

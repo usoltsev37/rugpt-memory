@@ -114,7 +114,7 @@ def evaluate(dataset):
                                       tokenizer,
                                       model_max_length=ltm_model.max_seq_length,
                                       max_sequence_len_in_batch=ltm_model.max_seq_length * 100,
-                                      batch_size=args.trainer_args.batch_size, shuffle=True,
+                                      batch_size=args.trainer_args.batch_size, shuffle=False,
                                       cut_by_shortest_article=args.trainer_args.cut_by_shortest_article)
     ltm_model.freeze()
     memory_model.freeze()
@@ -176,6 +176,7 @@ def train_ltm(ltm_model: LTM_GPT,
                                     attention_mask,
                                     memory_module.memory.to(ltm_model.second_device))
 
+        loss.backward()
         optim.step()
         torch.cuda.empty_cache()
 
