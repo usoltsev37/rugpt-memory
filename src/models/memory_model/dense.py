@@ -4,14 +4,16 @@ import torch.nn.functional as F
 
 
 class DenseNetwork(nn.Module):
-    def __init__(self,
-                 n_hid_layers: int = 1,
-                 input_dim: int = 5120,
-                 hidden_dim: int = 10240,
-                 out_dim: int = 5120,
-                 dtype: torch.dtype = torch.float32,
-                 dropout: float = 0.1,
-                 initialize_with_zeros=False):
+    def __init__(
+        self,
+        n_hid_layers: int = 1,
+        input_dim: int = 5120,
+        hidden_dim: int = 10240,
+        out_dim: int = 5120,
+        dtype: torch.dtype = torch.float32,
+        dropout: float = 0.1,
+        initialize_with_zeros=False,
+    ):
         """
         Dense network with adjustable number of hidden layers.
         :param n_hid_layers: Number of hidden layers
@@ -24,12 +26,18 @@ class DenseNetwork(nn.Module):
         super().__init__()
         self.act = F.gelu
 
-        layers = [nn.Linear(input_dim, hidden_dim, dtype=dtype), nn.Dropout(dropout)] if dropout > 0 else [
-            nn.Linear(input_dim, hidden_dim, dtype=dtype)]
+        layers = (
+            [nn.Linear(input_dim, hidden_dim, dtype=dtype), nn.Dropout(dropout)]
+            if dropout > 0
+            else [nn.Linear(input_dim, hidden_dim, dtype=dtype)]
+        )
 
         for _ in range(n_hid_layers - 1):
-            layers += [nn.Linear(hidden_dim, hidden_dim, dtype=dtype), nn.Dropout(dropout)] if dropout > 0 else [
-                nn.Linear(hidden_dim, hidden_dim, dtype=dtype)]
+            layers += (
+                [nn.Linear(hidden_dim, hidden_dim, dtype=dtype), nn.Dropout(dropout)]
+                if dropout > 0
+                else [nn.Linear(hidden_dim, hidden_dim, dtype=dtype)]
+            )
 
         layers.append(nn.Linear(hidden_dim, out_dim, dtype=dtype))
         self.layers = nn.Sequential(*layers)
