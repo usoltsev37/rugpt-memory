@@ -72,7 +72,7 @@ class REINFORCE:
         :param transitions: a list of transitions.
         :return: the average loss of the update.
         """
-        state, actbaion, reward, old_proba, old_distr = zip(*transitions)
+        state, action, reward, old_proba, old_distr = zip(*transitions)
         bs, num_transitions = state[0].memory.shape[0], len(state)
         losses = []
         for _ in range(self.batches_per_update):
