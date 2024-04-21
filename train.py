@@ -156,7 +156,7 @@ def train_ltm(ltm_model: LTM_GPT,
                                  agent.model.memory_type)
     memory_module.reset(batch_size)
 
-    for step in tqdm(range(num_steps)):
+    for step in range(num_steps):
         optim.zero_grad()
         input_ids, attention_mask = _crop_batch(data['input_ids'][:, step, :].contiguous(),
                                                 data['attention_mask'][:, step, :].contiguous())
@@ -180,8 +180,9 @@ def train_ltm(ltm_model: LTM_GPT,
                                     attention_mask,
                                     memory_module.memory.to(ltm_model.second_device))
 
+        loss.backward()
         optim.step()
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
 
         ltm_loss += loss.float().item()
 
@@ -212,7 +213,7 @@ def iterative_training(tensorboard_writer: SummaryWriter) -> None:
     train_dataloader_len = len(train_dataloader)
     batch_buffer, num_transitions_in_buffer = [], 0
 
-    for batch in tqdm(train_dataloader, total=train_dataloader_len, desc=f'Epoch {epoch}'):
+    for batch in train_dataloader: # tqdm(train_dataloader, total=train_dataloader_len, desc=f'Epoch {epoch}'):
         if is_ltm_training:
             ltm_episode_loss = train_ltm(ltm_model, agent, ltm_optimizer, batch, tensorboard_writer)
             ltm_loss += ltm_episode_loss
@@ -354,7 +355,7 @@ train_iteration = 0  # iteration is a number of batch in train dataset
 train_cycle = 0  # cycle of training ltm and memory_model
 
 try:
-    for epoch in itertools.count(start=1):  # epoch == traverse over train dataset once
+    for epoch in tqdm(itertools.count(start=1), desc='Training. Epoch'):  # epoch == traverse over train dataset once
         iterative_training(tensorboard_writer)
         if epoch == args.trainer_args.num_train_epochs:
             logger.info('-' * 100)
