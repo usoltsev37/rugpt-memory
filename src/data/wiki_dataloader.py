@@ -8,17 +8,20 @@ from src.data.wiki_dataset import WikiDataset
 class EpochDataloader(DataLoader):
     """Dataloader class for `WikiDataset`. By epoch we mean learning from batch articles of the data. A batch of
     articles is obtained as follows: they are tokenized, trimmed at a random place to the same length (this length
-    is the minimum length of a tokenized article in a batch) and converted into a tensor."""
+    is the minimum length of a tokenized article in a batch) and converted into a tensor.
+    """
 
-    def __init__(self,
-                 dataset: WikiDataset,
-                 tokenizer: AutoTokenizer.from_pretrained,
-                 model_max_length: int = 2048,
-                 max_sequence_len_in_batch: int = 2048 * 20,
-                 batch_size: int = 16,
-                 shuffle: bool = False,
-                 cut_by_shortest_article: bool = True,
-                 **kwargs):
+    def __init__(
+        self,
+        dataset: WikiDataset,
+        tokenizer: AutoTokenizer.from_pretrained,
+        model_max_length: int = 2048,
+        max_sequence_len_in_batch: int = 2048 * 100,
+        batch_size: int = 8,
+        shuffle: bool = False,
+        cut_by_shortest_article: bool = True,
+        **kwargs
+    ):
         self.iterator = None
         self.tokenizer = tokenizer
         self.model_max_length = model_max_length
@@ -28,29 +31,45 @@ class EpochDataloader(DataLoader):
 
     def _collate_fn(self, batch: [str]) -> dict:
         if self.cut_by_shortest_article:
-            tokenized_batch = self.tokenizer(batch, return_tensors='pt', padding=True)
-            shortest_article_len = tokenized_batch['attention_mask'].sum(dim=-1).min()
-            bs = tokenized_batch['input_ids'].shape[0]
+            tokenized_batch = self.tokenizer(batch, return_tensors="pt", padding=True)
+            shortest_article_len = tokenized_batch["attention_mask"].sum(dim=-1).min()
+            bs = tokenized_batch["input_ids"].shape[0]
             add_tokens_num = (self.model_max_length - shortest_article_len) % self.model_max_length
             if add_tokens_num:
-                add_tokens = torch.zeros(bs, add_tokens_num).long()
-                tokenized_batch['input_ids'] = torch.cat(
-                    (tokenized_batch['input_ids'][:, :shortest_article_len], add_tokens), dim=-1)
-                tokenized_batch['attention_mask'] = torch.cat(
-                    (tokenized_batch['attention_mask'][:, :shortest_article_len], add_tokens), dim=-1)
+                add_tokens = torch.full((bs, add_tokens_num), self.tokenizer.pad_token_id).long()
+                tokenized_batch["input_ids"] = torch.cat(
+                    (
+                        tokenized_batch["input_ids"][:, :shortest_article_len],
+                        add_tokens,
+                    ),
+                    dim=-1,
+                )
+                tokenized_batch["attention_mask"] = torch.cat(
+                    (
+                        tokenized_batch["attention_mask"][:, :shortest_article_len],
+                        add_tokens,
+                    ),
+                    dim=-1,
+                )
             else:
-                tokenized_batch['input_ids'] = tokenized_batch['input_ids'][:, :shortest_article_len]
-                tokenized_batch['attention_mask'] = tokenized_batch['attention_mask'][:, :shortest_article_len]
+                tokenized_batch["input_ids"] = tokenized_batch["input_ids"][:, :shortest_article_len]
+                tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"][:, :shortest_article_len]
 
         else:
-            tokenized_batch = self.tokenizer(batch, return_tensors='pt', padding=True, truncation=True,
-                                             max_length=self.max_sequence_len_in_batch,
-                                             pad_to_multiple_of=self.model_max_length)
+            tokenized_batch = self.tokenizer(
+                batch,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=self.max_sequence_len_in_batch,
+                pad_to_multiple_of=self.model_max_length,
+            )
 
         # Reshape to [batch_size, episode_len, len_seq_in_episode]
-        tokenized_batch['input_ids'] = tokenized_batch['input_ids'].view(len(batch), -1, self.model_max_length)
-        tokenized_batch['attention_mask'] = tokenized_batch['attention_mask'].view(len(batch), -1,
-                                                                                   self.model_max_length)
+        tokenized_batch["input_ids"] = tokenized_batch["input_ids"].view(len(batch), -1, self.model_max_length)
+        tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"].view(
+            len(batch), -1, self.model_max_length
+        )
         return tokenized_batch
 
     def __iter__(self):

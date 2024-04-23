@@ -4,10 +4,12 @@ import random
 from pathlib import Path
 
 from torch.utils.data import Dataset
+from tqdm.auto import tqdm
+from transformers import AutoTokenizer
 
 
 class WikiDataset(Dataset):
-    def __init__(self, data_path: str, n_context: int = 1, split: str = 'train', shuffle_context: bool = True) -> None:
+    def __init__(self, data_path: str, n_context: int = 1, split: str = "train", shuffle_context: bool = True) -> None:
         """
         Initializes the dataset object for loading and processing article data.
         Automatically handles train/test split if not already done.
@@ -19,14 +21,13 @@ class WikiDataset(Dataset):
         self.shuffle_context = shuffle_context
         self.n_context = n_context
         self.split = split
-        self.index_path = Path(data_path) / 'split' / f"{split}_index.pkl"
+        self.index_path = Path(data_path) / "split" / f"{split}_index.pkl"
 
         if not self.index_path.exists():
             print("Index or split not found. Creating now...")
             self.prepare_dataset()
 
-        self.id_to_offset = self._load_index()
-        self.ids = list(self.id_to_offset.keys())
+        self.id_to_offset, self.ids = self._load_index()
         self.length = len(self.ids)
 
     def prepare_dataset(self):
@@ -41,14 +42,27 @@ class WikiDataset(Dataset):
         Creates an index mapping article IDs to their file locations and offsets.
         :return: A dictionary mapping article IDs to tuples containing the file path and byte offset.
         """
-
+        tokenizer = AutoTokenizer.from_pretrained("ai-forever/rugpt3small_based_on_gpt2")
         index = {}
-        for part_file in self.data_path.glob('*.jsonl'):
+        for part_file in tqdm(self.data_path.glob("*.jsonl"), total=48):
             offset = 0
-            with part_file.open('rb') as f:
+            with part_file.open("rb") as f:
                 for line in f:
                     article = json.loads(line)
-                    index[article['document_id']] = (part_file.name, offset)
+
+                    # Check if there are no links for the article
+                    usable = False
+                    for link_list in article["links"]:
+                        if link_list:
+                            usable = True
+                            break
+
+                    # If the article is very short (<300 tokens), we are not going to use it for the training (as context it's ok)
+                    len_article = tokenizer("".join(article["texts"]), return_length=True)["length"][0]
+                    if len_article < 300:
+                        usable = False
+
+                    index[article["document_id"]] = (part_file.name, offset, usable)
                     offset += len(line)
 
         return index
@@ -67,34 +81,44 @@ class WikiDataset(Dataset):
         split_idx = int(len(test_ids) * 0.5)
         val_ids, test_ids = ids[:split_idx], ids[split_idx:]
 
-        train_index = {id_: index[id_] for id_ in train_ids}
-        val_index = {id_: index[id_] for id_ in val_ids}
-        test_index = {id_: index[id_] for id_ in test_ids}
+        train_index = {
+            "index": {id_: index[id_] for id_ in train_ids},
+            "usable_ids": [id_ for id_ in train_ids if index[id_][2]],
+        }
+        val_index = {
+            "index": {id_: index[id_] for id_ in val_ids},
+            "usable_ids": [id_ for id_ in val_ids if index[id_][2]],
+        }
+        test_index = {
+            "index": {id_: index[id_] for id_ in test_ids},
+            "usable_ids": [id_ for id_ in test_ids if index[id_][2]],
+        }
 
-        train_index_path = self.data_path / 'split' / "train_index.pkl"
-        val_index_path = self.data_path / 'split' / "val_index.pkl"
-        test_index_path = self.data_path / 'split' / "test_index.pkl"
+        train_index_path = self.data_path / "split" / "train_index.pkl"
+        val_index_path = self.data_path / "split" / "val_index.pkl"
+        test_index_path = self.data_path / "split" / "test_index.pkl"
 
         train_index_path.parent.mkdir(parents=True, exist_ok=True)
-        with train_index_path.open('wb') as f:
+        with train_index_path.open("wb") as f:
             pickle.dump(train_index, f)
-        with test_index_path.open('wb') as g:
+        with test_index_path.open("wb") as g:
             pickle.dump(test_index, g)
-        with val_index_path.open('wb') as e:
+        with val_index_path.open("wb") as e:
             pickle.dump(val_index, e)
 
-    def _load_index(self) -> dict:
+    def _load_index(self) -> tuple[dict, list[int]]:
         """
         Loads or creates an index mapping article IDs to their file locations and offsets.
         :return: A dictionary mapping article IDs to tuples containing the file path and byte offset.
         """
-        with self.index_path.open('rb') as f:
-            return pickle.load(f)
+        with self.index_path.open("rb") as f:
+            d = pickle.load(f)
+            return d["index"], d["usable_ids"]
 
     def __len__(self) -> int:
         return self.length
 
-    def _load_article_by_id(self, article_id: int) -> [str]:
+    def _load_article_by_id(self, article_id: int) -> list[str]:
         """
         Loads an article's sections by its ID.
         :param article_id: The ID of the article to load.
@@ -104,20 +128,20 @@ class WikiDataset(Dataset):
         if file_path_offset is None:
             return []
 
-        file_path, offset = file_path_offset
+        file_path, offset, _ = file_path_offset
         full_file_path = Path(self.data_path) / file_path
         with full_file_path.open("rb") as f:
             f.seek(offset)
             return json.loads(f.readline())["texts"]
 
-    def _sample_context(self, link_ids: [int]):
+    def _sample_context(self, link_ids: list[int]):
         """
         Samples a specified number of context articles from given link IDs.
         :param link_ids: A list of article IDs to sample from.
         :return: A string containing the concatenated text of the sampled context articles.
         """
         sampled_ids = random.sample(link_ids, min(self.n_context, len(link_ids)))
-        return "\n".join([''.join(self._load_article_by_id(id_)) for id_ in sampled_ids])
+        return "\n".join(["".join(self._load_article_by_id(id_)) for id_ in sampled_ids])
 
     def _add_context_to_article(self, article: dict) -> str:
         """
@@ -125,12 +149,12 @@ class WikiDataset(Dataset):
         :param article: The article data as a dictionary.
         :return: A string containing the article text with context added to each section.
         """
-        contexts = list(filter(lambda x: x != '', [self._sample_context(links) for links in article["links"]]))
+        contexts = list(filter(lambda x: x != "", [self._sample_context(links) for links in article["links"]]))
 
         if self.shuffle_context:
             random.shuffle(contexts)
 
-        result = [article["title"], *contexts, ''.join(article["texts"])]
+        result = [article["title"], *contexts, "".join(article["texts"])]
         return "\n".join(result)
 
     def __getitem__(self, item) -> str:
@@ -140,9 +164,9 @@ class WikiDataset(Dataset):
         :return: The text of the article with context added to each section.
         """
         article_id = self.ids[item]
-        path_to_file, offset = self.id_to_offset[article_id]
+        path_to_file, offset, _ = self.id_to_offset[article_id]
         full_path_to_file = Path(self.data_path) / path_to_file
-        with full_path_to_file.open('rb') as f:
+        with full_path_to_file.open("rb") as f:
             f.seek(offset)
             article = json.loads(f.readline())
             return self._add_context_to_article(article)
