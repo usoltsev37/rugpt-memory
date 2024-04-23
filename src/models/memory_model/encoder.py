@@ -39,13 +39,14 @@ class EncoderBlock(nn.Module):
     An encoder block consisting of multi-head attention and an MLP.
     """
 
-    def __init__(self,
-                 d_embd: int = 5120,
-                 d_hid: int = 5120 // 8,
-                 n_head: int = 4,
-                 dtype: torch.dtype = torch.float32,
-                 dropout: float = 0.1
-                 ) -> None:
+    def __init__(
+        self,
+        d_embd: int = 5120,
+        d_hid: int = 5120 // 8,
+        n_head: int = 4,
+        dtype: torch.dtype = torch.float32,
+        dropout: float = 0,
+    ) -> None:
         """
         :param d_embd: LTM model embedding size
         :param d_hid: Hidden layer embedding size
@@ -60,19 +61,32 @@ class EncoderBlock(nn.Module):
         self.dtype = dtype
 
         self.ln_1 = nn.LayerNorm(d_embd, dtype=dtype)
-        self.attn = nn.MultiheadAttention(d_embd, n_head, dropout, batch_first=True, dtype=dtype)
+        self.attn = nn.MultiheadAttention(
+            d_embd, n_head, dropout, batch_first=True, dtype=dtype
+        )
         self.ln_2 = nn.LayerNorm(d_embd, dtype=dtype)
         self.mlp = DenseNetwork(1, d_embd, d_hid, d_embd, dropout=dropout, dtype=dtype)
 
     def forward(self, x: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
         x = self.ln_1(x)
-        attn_mask = torch.triu(torch.full((x.shape[1], x.shape[1]), 1.), diagonal=1).to(x.device)
+        attn_mask = torch.triu(
+            torch.full((x.shape[1], x.shape[1]), 1.0), diagonal=1
+        ).to(x.device)
         # zero_rows = (attention_mask == 0).all(dim=1)
         # attention_mask_copy = attention_mask.copy()
         # attention_mask_copy[zero_rows, 0] = 1
         # key_padding_mask = (1 - attention_mask_copy).bool()
         key_padding_mask = (1 - attention_mask).bool()
 
-        x = x + self.attn(x, x, x, is_causal=True, attn_mask=attn_mask, key_padding_mask=key_padding_mask)[
-            0]
+        x = (
+            x
+            + self.attn(
+                x,
+                x,
+                x,
+                is_causal=True,
+                attn_mask=attn_mask,
+                key_padding_mask=key_padding_mask,
+            )[0]
+        )
         return x + self.mlp(self.ln_2(x))

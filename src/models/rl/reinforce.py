@@ -10,9 +10,7 @@ from src.utils.train_config import RLParams
 
 
 class REINFORCE:
-    def __init__(self, agent: Agent,
-                 optimizer: torch.optim,
-                 train_config: RLParams):
+    def __init__(self, agent: Agent, optimizer: torch.optim, train_config: RLParams):
 
         self.agent = agent
         self.optim = optimizer
@@ -44,7 +42,8 @@ class REINFORCE:
         probs = torch.stack([d["pos_distr"].probs[j] for d, (_, j) in zip(selected_distributions, ids)]).to(self.device)
         loc = torch.stack([d["normal_distr"].loc[j] for d, (_, j) in zip(selected_distributions, ids)]).to(self.device)
         scale = torch.stack([d["normal_distr"].scale[j] for d, (_, j) in zip(selected_distributions, ids)]).to(
-            self.device)
+            self.device
+        )
         pos_distr_cls = Categorical if self.agent.memory_type == "conservative" else Bernoulli
         pos_distr = pos_distr_cls(probs.detach())
         normal_distr = Normal(loc.detach(), scale.detach())
@@ -53,7 +52,9 @@ class REINFORCE:
     @staticmethod
     def select_state_batch(states: [State], ids: [(int, int)]) -> State:
         selected_states = [states[i] for (i, _) in ids]
-        embeddings = torch.stack([s.embeddings[j] for s, (_, j) in zip(selected_states, ids)], )
+        embeddings = torch.stack(
+            [s.embeddings[j] for s, (_, j) in zip(selected_states, ids)],
+        )
         attention_mask = torch.stack([s.attention_mask[j] for s, (_, j) in zip(selected_states, ids)])
         memory = torch.stack([s.memory[j] for s, (_, j) in zip(selected_states, ids)])
         return State(memory.detach(), embeddings.detach(), attention_mask.detach())
@@ -65,19 +66,21 @@ class REINFORCE:
         memory_vectors = torch.stack([a.memory_vectors[j] for a, (_, j) in zip(selected_actions, ids)])
         return Action(positions.detach(), memory_vectors.detach())
 
-    def update(self, transitions: [list]) -> float | None:
+    def update(self, transitions: list[list]) -> float | None:
         """
         Updates the agent's policy based on collected transitions.
 
         :param transitions: a list of transitions.
         :return: the average loss of the update.
         """
-        state, actbaion, reward, old_proba, old_distr = zip(*transitions)
+        state, action, reward, old_proba, old_distr = zip(*transitions)
         bs, num_transitions = state[0].memory.shape[0], len(state)
         losses = []
-        for _ in range(self.batches_per_update):
+
+        for step in range(self.batches_per_update):
             ids = np.random.choice(range(num_transitions * bs), self.batch_size, replace=False)
             ids = [(idx // bs, idx % bs) for idx in ids]
+
             state_batch = self.select_state_batch(state, ids).to(self.device)
             action_batch = self.select_action_batch(action, ids).to(self.device)
             reward_batch = torch.stack([reward[i][j] for (i, j) in ids]).detach().to(self.device)
@@ -89,19 +92,22 @@ class REINFORCE:
             with torch.no_grad():
                 kld = self.agent.compute_kld(old_distr_batch, distr)
 
-            if self.kl_target is not None and torch.mean(kld) > self.kl_target:
-                logger.warning(f"Early stopping! KLD is {torch.mean(kld)} on iteration {_ + 1}")
+            if step > 0 and self.kl_target is not None and torch.mean(kld) > self.kl_target:
+                logger.warning(f"Early stopping! KLD is {torch.mean(kld)} on iteration {step + 1}")
                 return np.mean(losses) if losses else None
 
             ratio = torch.exp(cur_proba - old_proba_batch)
 
-            loss = -torch.min(ratio * reward_batch, torch.clamp(ratio, 1 - self.clip, 1 + self.clip) * reward_batch)
+            loss = -torch.min(
+                ratio * reward_batch,
+                torch.clamp(ratio, 1 - self.clip, 1 + self.clip) * reward_batch,
+            )
             loss -= self.entropy_coef * entropy
             loss = loss.mean()
-            self.optim.zero_grad()
             loss.backward()
             nn.utils.clip_grad_norm_(self.agent.parameters(), self.clip_grad_norm)
             self.optim.step()
+            self.optim.zero_grad()
 
             losses.append(loss.item())
 

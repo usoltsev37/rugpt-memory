@@ -1,3 +1,5 @@
+import random
+
 import torch
 import torch.nn.functional as F
 
@@ -7,14 +9,21 @@ from src.models.rl.utils import Action, State
 from src.utils.train_config import SyntheticTaskEnvParams
 
 
+def _crop_batch(input_ids: torch.Tensor, attention_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    crop_by_len = random.randint(2, input_ids.shape[1])
+    return input_ids[:, :crop_by_len], attention_mask[:, :crop_by_len]
+
+
 class LTMEnvironment:
     """Memory model training environment. The reward and state come from the LTM model."""
 
-    def __init__(self,
-                 ltm_model: LTM_GPT,
-                 memory_num_vectors: int,
-                 d_mem: int,
-                 dtype: torch.dtype = torch.float32) -> None:
+    def __init__(
+        self,
+        ltm_model: LTM_GPT,
+        memory_num_vectors: int,
+        d_mem: int,
+        dtype: torch.dtype = torch.float32,
+    ) -> None:
         self.attention_mask = None
         self.data = None
         self.embeddings = None
@@ -34,32 +43,69 @@ class LTMEnvironment:
         :return: first observation - tuple of the memory and high-level embeddings
         """
         # Return new state
-        bs, n_steps, _ = data['input_ids'].shape
+        bs, n_steps, _ = data["input_ids"].shape
         self.data = data
         self.cur_step = 0
         self.n_steps = n_steps
 
-        input_ids, attention_mask = (data['input_ids'][:, self.cur_step, :].contiguous(),
-                                     data['attention_mask'][:, self.cur_step, :].contiguous())
+        input_ids, attention_mask = (
+            data["input_ids"][:, self.cur_step, :].contiguous(),
+            data["attention_mask"][:, self.cur_step, :].contiguous(),
+        )
 
         # Get embeddings for the first state
         input_ids, attention_mask = input_ids.to(self.ltm_model.first_device), attention_mask.to(
-            self.ltm_model.first_device)
-        embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
+            self.ltm_model.first_device
+        )
+        with torch.no_grad():
+            embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
 
+        self.input_ids = input_ids.cpu()
         self.embeddings = embeddings.cpu()
         self.attention_mask = attention_mask.cpu()
         self.memory_module.reset(bs)
 
-        return State(self.memory_module.memory, self.embeddings, attention_mask)
+        return State(
+            self.memory_module.memory,
+            self.embeddings,
+            attention_mask,
+        )
 
     def step(self, action: Action) -> tuple[State, torch.Tensor, bool]:
         self.cur_step += 1
 
-        reward = self.ltm_model.get_output(self.embeddings.to(self.ltm_model.second_device),
-                                           self.attention_mask.to(self.ltm_model.second_device),
-                                           self.memory_module.memory.to(self.ltm_model.second_device),
-                                           reward_for_agent=True)
+        reward = self.ltm_model.get_output(
+            self.embeddings.to(self.ltm_model.second_device),
+            self.input_ids.to(self.ltm_model.second_device),
+            self.attention_mask.to(self.ltm_model.second_device),
+            self.memory_module.memory.to(self.ltm_model.second_device),
+            reward_for_agent=True,
+        )
+
+        # Try other prefixes
+        for _ in range(4):
+            input_ids, attention_mask = _crop_batch(
+                self.input_ids,
+                self.attention_mask,
+            )
+
+            input_ids, attention_mask = input_ids.to(self.ltm_model.first_device), attention_mask.to(
+                self.ltm_model.first_device
+            )
+
+            with torch.no_grad():
+                embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
+
+            prefix_reward = self.ltm_model.get_output(
+                embeddings.to(self.ltm_model.second_device),
+                input_ids.to(self.ltm_model.second_device),
+                attention_mask.to(self.ltm_model.second_device),
+                self.memory_module.memory.to(self.ltm_model.second_device),
+                reward_for_agent=True,
+            )
+            reward += prefix_reward
+
+        reward /= 5
 
         new_memory = self.memory_module.update(action)
 
@@ -69,16 +115,29 @@ class LTMEnvironment:
             self.attention_mask = torch.zeros_like(self.attention_mask)
         else:
             done = False
-            input_ids, attention_mask = (self.data['input_ids'][:, self.cur_step, :].contiguous(),
-                                         self.data['attention_mask'][:, self.cur_step, :].contiguous())
+            input_ids, attention_mask = (
+                self.data["input_ids"][:, self.cur_step, :].contiguous(),
+                self.data["attention_mask"][:, self.cur_step, :].contiguous(),
+            )
 
-            embeddings = self.ltm_model.get_embeddings(input_ids.to(self.ltm_model.first_device),
-                                                       attention_mask.to(self.ltm_model.first_device))
+            embeddings = self.ltm_model.get_embeddings(
+                input_ids.to(self.ltm_model.first_device),
+                attention_mask.to(self.ltm_model.first_device),
+            )
 
+            self.input_ids = input_ids.cpu()
             self.embeddings = embeddings.cpu()
-            self.attention_mask = attention_mask
+            self.attention_mask = attention_mask.cpu()
 
-        return State(new_memory, self.embeddings, self.attention_mask), reward, done
+        return (
+            State(
+                new_memory,
+                self.embeddings,
+                self.attention_mask,
+            ),
+            reward,
+            done,
+        )
 
 
 class SyntheticTaskEnv:
@@ -99,8 +158,9 @@ class SyntheticTaskEnv:
         Resets the environment to an initial state.
         :return: the initial state with zeroed memory.
         """
-        self.state = State(torch.zeros((1, self.num_vectors, self.d_mem)),
-                           torch.empty(0))  # [batch_size, num_vectors, d_mem]
+        self.state = State(
+            torch.zeros((1, self.num_vectors, self.d_mem)), torch.empty(0)
+        )  # [batch_size, num_vectors, d_mem]
         self.cur_step = 0
         self.pos.clear()
         return self.state
@@ -130,8 +190,11 @@ class SyntheticTaskEnv:
         :param action: the action taken by the agent.
         :return: the new state, the reward for the action, and a boolean indicating if the episode is finished.
         """
-        mask = F.one_hot(action.positions,
-                         num_classes=self.num_vectors) if self.memory_type == "conservative" else action.positions
+        mask = (
+            F.one_hot(action.positions, num_classes=self.num_vectors)
+            if self.memory_type == "conservative"
+            else action.positions
+        )
 
         mask = mask.unsqueeze(-1).expand_as(self.state.memory)
 

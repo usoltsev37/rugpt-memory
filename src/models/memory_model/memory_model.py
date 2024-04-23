@@ -15,15 +15,17 @@ class MemoryModel(torch.nn.Module):
     memory and the probability for each memory position for replacing it.
     """
 
-    def __init__(self,
-                 d_embd: int,
-                 d_mem: int,
-                 num_vectors: int,
-                 device: torch.device,
-                 memory_type: str = "conservative",
-                 n_enc_block: int = 2,
-                 n_dec_block: int = 3,
-                 dtype: torch.dtype = torch.float32) -> None:
+    def __init__(
+        self,
+        d_embd: int,
+        d_mem: int,
+        num_vectors: int,
+        device: torch.device,
+        memory_type: str = "conservative",
+        n_enc_block: int = 2,
+        n_dec_block: int = 3,
+        dtype: torch.dtype = torch.float32,
+    ) -> None:
         """
         :param d_embd: main model embedding size
         :param d_mem: memory vector size

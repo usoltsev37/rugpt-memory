@@ -24,9 +24,9 @@ class MemoryModelParams:
     num_vectors: int
     d_mem: int
     memory_type: str = field(default="conservative")
-    n_enc_block: int = field(default=2)
-    n_dec_block: int = field(default=3)
-    d_embd: int = field(default=5120)
+    n_enc_block: int = field(default=1)
+    n_dec_block: int = field(default=1)
+    d_embd: int = field(default=768)
 
 
 @dataclass
@@ -38,7 +38,7 @@ class RLParams:
     clip: float = field(default=0.2)
     entropy_coef: float = field(default=1e-2)
     clip_grad_norm: float = field(default=1.0)
-    kl_target: float = field(default=0.03)
+    kl_target: float = field(default=0.5)
 
 
 @dataclass
@@ -54,6 +54,7 @@ class TrainerArgs:
     warmup_steps: int
     gradient_accumulation_steps: int
     fp16: bool
+    step_length: int
     num_train_epochs: int
     ltm_model_iterations: int
     memory_model_iterations: int

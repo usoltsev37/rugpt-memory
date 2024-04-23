@@ -11,7 +11,7 @@ class DenseNetwork(nn.Module):
         hidden_dim: int = 10240,
         out_dim: int = 5120,
         dtype: torch.dtype = torch.float32,
-        dropout: float = 0.1,
+        dropout: float = 0,
         initialize_with_zeros=False,
     ):
         """
@@ -26,20 +26,25 @@ class DenseNetwork(nn.Module):
         super().__init__()
         self.act = F.gelu
 
-        layers = (
-            [nn.Linear(input_dim, hidden_dim, dtype=dtype), nn.Dropout(dropout)]
-            if dropout > 0
-            else [nn.Linear(input_dim, hidden_dim, dtype=dtype)]
-        )
-
-        for _ in range(n_hid_layers - 1):
-            layers += (
-                [nn.Linear(hidden_dim, hidden_dim, dtype=dtype), nn.Dropout(dropout)]
+        if n_hid_layers:
+            layers = (
+                [nn.Linear(input_dim, hidden_dim, dtype=dtype), nn.Dropout(dropout)]
                 if dropout > 0
-                else [nn.Linear(hidden_dim, hidden_dim, dtype=dtype)]
+                else [nn.Linear(input_dim, hidden_dim, dtype=dtype)]
             )
 
-        layers.append(nn.Linear(hidden_dim, out_dim, dtype=dtype))
+            for _ in range(n_hid_layers - 1):
+                layers += (
+                    [nn.Linear(hidden_dim, hidden_dim, dtype=dtype), nn.Dropout(dropout)]
+                    if dropout > 0
+                    else [nn.Linear(hidden_dim, hidden_dim, dtype=dtype)]
+                )
+
+            layers.append(nn.Linear(hidden_dim, out_dim, dtype=dtype))
+
+        else:
+            layers = [nn.Linear(input_dim, out_dim, dtype=dtype)]
+
         self.layers = nn.Sequential(*layers)
 
         if initialize_with_zeros:
@@ -47,6 +52,9 @@ class DenseNetwork(nn.Module):
                 nn.init.zeros_(param)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        for layer in self.layers[:-1]:
-            x = self.act(layer(x)) if isinstance(layer, nn.Linear) else layer(x)
-        return self.layers[-1](x)
+        if len(self.layers) > 1:
+            for layer in self.layers[:-1]:
+                x = self.act(layer(x)) if isinstance(layer, nn.Linear) else layer(x)
+            return self.layers[-1](x)
+        else:
+            return self.act(self.layers[0](x))

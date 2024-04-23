@@ -4,38 +4,45 @@ import bitsandbytes as bnb
 import peft
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers.utils.quantization_config import BitsAndBytesConfig
 
 from src.utils.logger_singleton import logger
 
+# from transformers.utils.quantization_config import BitsAndBytesConfig
+
+
 
 def load_base_model(main_config):
-    logger.info('Loading base model...')
+    logger.info("Loading base model...")
 
     dtype = torch.float16 if main_config.trainer_args.fp16 else torch.float32
     checkpoint_base_cache_dir = Path(main_config.checkpoint_base_cache_dir).resolve()
-    bnb = BitsAndBytesConfig(load_in_4bit=main_config.base_model_params.load_in_4bit, bnb_4bit_compute_dtype=dtype)
+    # bnb = BitsAndBytesConfig(load_in_4bit=main_config.base_model_params.load_in_4bit, bnb_4bit_compute_dtype=dtype)
 
     model = AutoModelForCausalLM.from_pretrained(
         main_config.pretrained_model_name_or_path,
+        # quantization_config=bnb,
         cache_dir=checkpoint_base_cache_dir,
-        quantization_config=bnb,
         torch_dtype=dtype,
-        device_map='auto',
+        device_map="auto",
         low_cpu_mem_usage=True,
-        offload_state_dict=True
+        offload_state_dict=True,
+        tie_word_embeddings=False,
     )
 
     tokenizer = AutoTokenizer.from_pretrained(main_config.pretrained_model_name_or_path)
 
     if main_config.base_model_params.add_lora:
-        modules_to_add_lora = ['attn.a_attn', 'attn.c_proj', 'mlp.c_fc', 'mlp.c_proj']
+        modules_to_add_lora = ["attn.a_attn", "attn.c_proj", "mlp.c_fc", "mlp.c_proj"]
         cnt_blocks_with_memory = main_config.ltm_params.cnt_blocks_with_memory
         num_layers = len(model.transformer.h)
-        target_modules = [f"transformer.h.{num_layers - i - 1}.{module}" for module in modules_to_add_lora for i in
-                          range(cnt_blocks_with_memory)]
-        peft_config = peft.LoraConfig(target_modules=target_modules, inference_mode=False, r=8, lora_alpha=16,
-                                      lora_dropout=0.1)
+        target_modules = [
+            f"transformer.h.{num_layers - i - 1}.{module}"
+            for module in modules_to_add_lora
+            for i in range(cnt_blocks_with_memory)
+        ]
+        peft_config = peft.LoraConfig(
+            target_modules=target_modules, inference_mode=False, r=8, lora_alpha=16, lora_dropout=0.1
+        )
         model = peft.get_peft_model(model, peft_config).base_model.model
 
     for param in model.parameters():
@@ -48,7 +55,8 @@ def load_base_model(main_config):
     model.enable_input_require_grads()  # override an implementation quirk in gradient checkpoints that disables backprop unless inputs require grad
 
     class CastOutputToFloat(torch.nn.Sequential):
-        def forward(self, x): return super().forward(x).to(torch.float32)
+        def forward(self, x):
+            return super().forward(x).to(torch.float32)
 
     model.lm_head = CastOutputToFloat(model.lm_head)  # cast model ouputs to unfuct the top-k sampler
     return model, tokenizer

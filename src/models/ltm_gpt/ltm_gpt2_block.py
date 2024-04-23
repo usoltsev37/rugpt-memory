@@ -5,14 +5,16 @@ from src.models.memory_model.dense import DenseNetwork
 
 
 class LTMGPT2Block(nn.Module):
-    """ Custom LTMGPT2Block layer with memory """
+    """Custom LTMGPT2Block layer with memory"""
 
-    def __init__(self,
-                 gpt2_block: nn.Module,
-                 d_mem: int,
-                 num_heads: int = 4,
-                 dropout: float = 0.1,
-                 dtype: torch.dtype = torch.float32) -> None:
+    def __init__(
+        self,
+        gpt2_block: nn.Module,
+        d_mem: int,
+        num_heads: int = 4,
+        dropout: float = 0.1,
+        dtype: torch.dtype = torch.float32,
+    ) -> None:
         super().__init__()
         self.gpt2_block = gpt2_block
         self.d_mem = d_mem
@@ -28,14 +30,11 @@ class LTMGPT2Block(nn.Module):
             out_dim=self.embed_dim,
             dtype=dtype,
             dropout=dropout,
-            initialize_with_zeros=False)
+            initialize_with_zeros=False,
+        )
 
         self.attn = nn.MultiheadAttention(
-            embed_dim=self.embed_dim,
-            num_heads=num_heads,
-            dropout=dropout,
-            batch_first=True,
-            dtype=dtype
+            embed_dim=self.embed_dim, num_heads=num_heads, dropout=dropout, batch_first=True, dtype=dtype
         )
 
         self.ln1 = nn.LayerNorm(self.embed_dim, dtype=dtype)
@@ -47,15 +46,12 @@ class LTMGPT2Block(nn.Module):
             out_dim=self.embed_dim,
             dropout=dropout,
             dtype=dtype,
-            initialize_with_zeros=True
+            initialize_with_zeros=True,
         )
 
         self.ln2 = nn.LayerNorm(self.embed_dim, dtype=dtype)
 
-    def forward(self,
-                hidden_states: torch.Tensor,
-                attention_mask: torch.Tensor,
-                memory: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor, memory: torch.Tensor) -> torch.Tensor:
         attention_mask = attention_mask[:, None, None, :]
         attention_mask = (1.0 - attention_mask) * torch.finfo(self.dtype).min
         attention_mask = attention_mask.to(dtype=self.dtype, device=hidden_states.device)
@@ -69,11 +65,7 @@ class LTMGPT2Block(nn.Module):
 
         # MultiHead Attention
         key, value = memory, memory
-        x, _ = self.attn(
-            query=query,
-            key=key,
-            value=value
-        )
+        x, _ = self.attn(query=query, key=key, value=value)
 
         # Norm & Concat
         x = x + residual

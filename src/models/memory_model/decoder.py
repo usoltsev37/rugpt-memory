@@ -25,7 +25,12 @@ class Decoder(nn.Module):
         self.blocks = get_clones(block, n_block)
         self.ln_out = nn.LayerNorm(block.d_mem, dtype=block.dtype)
 
-    def forward(self, memory: torch.tensor, embeddings: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
+    def forward(
+        self,
+        memory: torch.tensor,
+        embeddings: torch.tensor,
+        attention_mask: torch.Tensor,
+    ) -> torch.tensor:
         """
         :param memory: Tensor of memory embeddings with size [batch, mem_size, n_mem]
         :param embeddings: Tensor of sentence embeddings with size [batch, seq_lem, n_embd]
@@ -39,13 +44,14 @@ class Decoder(nn.Module):
 
 class DecoderBlock(nn.Module):
 
-    def __init__(self,
-                 d_mem: int,
-                 d_embd: int = 5120,
-                 n_head: int = 4,
-                 dtype: torch.dtype = torch.float32,
-                 dropout: float = 0.1
-                 ) -> None:
+    def __init__(
+        self,
+        d_mem: int,
+        d_embd: int = 5120,
+        n_head: int = 4,
+        dtype: torch.dtype = torch.float32,
+        dropout: float = 0,
+    ) -> None:
         """
         :param d_embd: LTM model embedding size
         :param d_mem: Memory vector size
@@ -56,25 +62,34 @@ class DecoderBlock(nn.Module):
         super().__init__()
         self.d_mem = d_mem
         self.dtype = dtype
-        self.dense_network_for_embeddings = DenseNetwork(n_hid_layers=0,
-                                                         input_dim=d_embd,
-                                                         hidden_dim=d_mem,
-                                                         out_dim=d_mem,
-                                                         dropout=dropout,
-                                                         dtype=dtype)
+        self.dense_network_for_embeddings = DenseNetwork(
+            n_hid_layers=0,
+            input_dim=d_embd,
+            hidden_dim=d_mem,
+            out_dim=d_mem,
+            dropout=dropout,
+            dtype=dtype,
+        )
 
         self.ln_1 = nn.LayerNorm(d_mem, dtype=dtype)
         self.attn = nn.MultiheadAttention(d_mem, n_head, dropout, batch_first=True, dtype=dtype)
         self.ln_2 = nn.LayerNorm(d_mem, dtype=dtype)
-        self.mlp = DenseNetwork(n_hid_layers=0,
-                                input_dim=d_mem,
-                                hidden_dim=d_mem,
-                                out_dim=d_mem,
-                                dropout=dropout,
-                                dtype=dtype)
+        self.mlp = DenseNetwork(
+            n_hid_layers=0,
+            input_dim=d_mem,
+            hidden_dim=d_mem,
+            out_dim=d_mem,
+            dropout=dropout,
+            dtype=dtype,
+        )
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, memory: torch.tensor, embeddings: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
+    def forward(
+        self,
+        memory: torch.tensor,
+        embeddings: torch.tensor,
+        attention_mask: torch.Tensor,
+    ) -> torch.tensor:
         embeddings = self.dense_network_for_embeddings(embeddings)
         memory = self.ln_1(memory)
         attention_mask = (1 - attention_mask).bool().to(memory.device)
