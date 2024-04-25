@@ -10,7 +10,6 @@ from src.utils.logger_singleton import logger
 # from transformers.utils.quantization_config import BitsAndBytesConfig
 
 
-
 def load_base_model(main_config):
     logger.info("Loading base model...")
 
@@ -22,8 +21,7 @@ def load_base_model(main_config):
         main_config.pretrained_model_name_or_path,
         # quantization_config=bnb,
         cache_dir=checkpoint_base_cache_dir,
-        torch_dtype=dtype,
-        device_map="auto",
+        # device_map="auto",
         low_cpu_mem_usage=True,
         offload_state_dict=True,
         tie_word_embeddings=False,
@@ -32,7 +30,7 @@ def load_base_model(main_config):
     tokenizer = AutoTokenizer.from_pretrained(main_config.pretrained_model_name_or_path)
 
     if main_config.base_model_params.add_lora:
-        modules_to_add_lora = ["attn.a_attn", "attn.c_proj", "mlp.c_fc", "mlp.c_proj"]
+        modules_to_add_lora = ["attn.c_attn", "attn.c_proj", "mlp.c_fc", "mlp.c_proj"]
         cnt_blocks_with_memory = main_config.ltm_params.cnt_blocks_with_memory
         num_layers = len(model.transformer.h)
         target_modules = [
@@ -47,12 +45,10 @@ def load_base_model(main_config):
 
     for param in model.parameters():
         param.requires_grad = False
-        if param.dtype == torch.float32:
-            param.data = param.data.to(dtype)
 
     # optimization
-    model.gradient_checkpointing_enable()  # memory optimization: only store a small subset of activations, re-compute the rest.
-    model.enable_input_require_grads()  # override an implementation quirk in gradient checkpoints that disables backprop unless inputs require grad
+    # model.gradient_checkpointing_enable()  # memory optimization: only store a small subset of activations, re-compute the rest.
+    # model.enable_input_require_grads()  # override an implementation quirk in gradient checkpoints that disables backprop unless inputs require grad
 
     class CastOutputToFloat(torch.nn.Sequential):
         def forward(self, x):

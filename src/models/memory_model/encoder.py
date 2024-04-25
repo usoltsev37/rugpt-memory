@@ -21,7 +21,7 @@ class Encoder(nn.Module):
         """
         super().__init__()
         self.blocks = get_clones(block, n_block)
-        self.ln_out = nn.LayerNorm(block.d_embd, dtype=block.dtype)
+        self.ln_out = nn.LayerNorm(block.d_embd)
 
     def forward(self, x: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
         """
@@ -60,22 +60,14 @@ class EncoderBlock(nn.Module):
         self.n_head = n_head
         self.dtype = dtype
 
-        self.ln_1 = nn.LayerNorm(d_embd, dtype=dtype)
-        self.attn = nn.MultiheadAttention(
-            d_embd, n_head, dropout, batch_first=True, dtype=dtype
-        )
-        self.ln_2 = nn.LayerNorm(d_embd, dtype=dtype)
-        self.mlp = DenseNetwork(1, d_embd, d_hid, d_embd, dropout=dropout, dtype=dtype)
+        self.ln_1 = nn.LayerNorm(d_embd)
+        self.attn = nn.MultiheadAttention(d_embd, n_head, dropout, batch_first=True)
+        self.ln_2 = nn.LayerNorm(d_embd)
+        self.mlp = DenseNetwork(1, d_embd, d_hid, d_embd, dropout=dropout)
 
     def forward(self, x: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
         x = self.ln_1(x)
-        attn_mask = torch.triu(
-            torch.full((x.shape[1], x.shape[1]), 1.0), diagonal=1
-        ).to(x.device)
-        # zero_rows = (attention_mask == 0).all(dim=1)
-        # attention_mask_copy = attention_mask.copy()
-        # attention_mask_copy[zero_rows, 0] = 1
-        # key_padding_mask = (1 - attention_mask_copy).bool()
+        attn_mask = torch.triu(torch.full((x.shape[1], x.shape[1]), 1.0), diagonal=1).bool().to(x.device)
         key_padding_mask = (1 - attention_mask).bool()
 
         x = (

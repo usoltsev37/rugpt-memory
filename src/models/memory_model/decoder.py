@@ -68,20 +68,12 @@ class DecoderBlock(nn.Module):
             hidden_dim=d_mem,
             out_dim=d_mem,
             dropout=dropout,
-            dtype=dtype,
         )
 
-        self.ln_1 = nn.LayerNorm(d_mem, dtype=dtype)
-        self.attn = nn.MultiheadAttention(d_mem, n_head, dropout, batch_first=True, dtype=dtype)
-        self.ln_2 = nn.LayerNorm(d_mem, dtype=dtype)
-        self.mlp = DenseNetwork(
-            n_hid_layers=0,
-            input_dim=d_mem,
-            hidden_dim=d_mem,
-            out_dim=d_mem,
-            dropout=dropout,
-            dtype=dtype,
-        )
+        self.ln_1 = nn.LayerNorm(d_mem)
+        self.attn = nn.MultiheadAttention(d_mem, n_head, dropout, batch_first=True)
+        self.ln_2 = nn.LayerNorm(d_mem)
+        self.mlp = DenseNetwork(n_hid_layers=0, input_dim=d_mem, hidden_dim=d_mem, out_dim=d_mem, dropout=dropout)
         self.dropout = nn.Dropout(dropout)
 
     def forward(

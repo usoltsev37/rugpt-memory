@@ -8,6 +8,8 @@ from src.models.rl.utils import Action, State
 from src.utils.logger_singleton import logger
 from src.utils.train_config import RLParams
 
+torch.autograd.set_detect_anomaly(True)
+
 
 class REINFORCE:
     def __init__(self, agent: Agent, optimizer: torch.optim, train_config: RLParams):
@@ -32,7 +34,7 @@ class REINFORCE:
         :return: the action taken, the probability of the action, and the distributions used for sampling the action.
         """
         with torch.no_grad():
-            action, proba, distr = self.agent.act(state.to(self.device))
+            action, proba, distr = self.agent.act(state)
 
         # todo: distr to cpu
         return action.to(torch.device("cpu")), proba.cpu(), distr
@@ -66,7 +68,7 @@ class REINFORCE:
         memory_vectors = torch.stack([a.memory_vectors[j] for a, (_, j) in zip(selected_actions, ids)])
         return Action(positions.detach(), memory_vectors.detach())
 
-    def update(self, transitions: list[list]) -> float | None:
+    def update(self, transitions: list[list], accelerator) -> float | None:
         """
         Updates the agent's policy based on collected transitions.
 
@@ -81,10 +83,10 @@ class REINFORCE:
             ids = np.random.choice(range(num_transitions * bs), self.batch_size, replace=False)
             ids = [(idx // bs, idx % bs) for idx in ids]
 
-            state_batch = self.select_state_batch(state, ids).to(self.device)
-            action_batch = self.select_action_batch(action, ids).to(self.device)
-            reward_batch = torch.stack([reward[i][j] for (i, j) in ids]).detach().to(self.device)
-            old_proba_batch = torch.stack([old_proba[i][j] for (i, j) in ids]).detach().to(self.device)
+            state_batch = self.select_state_batch(state, ids)
+            action_batch = self.select_action_batch(action, ids)
+            reward_batch = torch.stack([reward[i][j] for (i, j) in ids]).detach()
+            old_proba_batch = torch.stack([old_proba[i][j] for (i, j) in ids]).detach()
             old_distr_batch = self._get_distr_from_list(old_distr, ids)
 
             cur_proba, entropy, distr = self.agent.compute_logproba_and_entropy(state_batch, action_batch)
@@ -102,9 +104,11 @@ class REINFORCE:
                 ratio * reward_batch,
                 torch.clamp(ratio, 1 - self.clip, 1 + self.clip) * reward_batch,
             )
+
             loss -= self.entropy_coef * entropy
             loss = loss.mean()
-            loss.backward()
+            accelerator.backward(loss)
+
             nn.utils.clip_grad_norm_(self.agent.parameters(), self.clip_grad_norm)
             self.optim.step()
             self.optim.zero_grad()

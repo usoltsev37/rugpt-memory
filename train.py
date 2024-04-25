@@ -1,30 +1,32 @@
 import argparse
-import gc
 import itertools
 import logging
-import math
 import os
 import random
-import time
 from dataclasses import asdict
 from pathlib import Path
-
-import psutil
 import torch
 import torch.nn as nn
 import torch.optim
+from collections import deque
+import shutil
+
 
 from src.utils.logger_singleton import ColourFormatter
 
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 import subprocess
-import time
 
 from tqdm.auto import tqdm
+from accelerate import Accelerator
 from transformers.trainer_pt_utils import get_model_param_count
 from transformers.trainer_utils import set_seed
 
-import wandb
+from transformers.utils import logging as tr_logging
+
+tr_logging.set_verbosity_error()
+
+from torch.utils.tensorboard import SummaryWriter
 from src.data.wiki_dataloader import EpochDataloader
 from src.data.wiki_dataset import WikiDataset
 from src.models.load_ltm_model import load_ltm_model
@@ -37,151 +39,8 @@ from src.models.rl.utils import State
 from src.utils.logger_singleton import logger
 from src.utils.train_config import *
 
-
-def log_memory_usage():
-    # Step 3: Get RAM information using psutil
-    while True:
-        memory = psutil.virtual_memory()
-        # You can log the total, available, and percentage used
-        logger.info(f"Available memory: {memory.available / (1024 ** 3):.2f} GB")
-        logger.info(f"Percentage used: {memory.percent}%")
-        time.sleep(30)
-
-
-def load_trainable_parameters(model: nn.Module, filepath: str):
-
-    # Load the saved trainable parameters
-    trainable_params = torch.load(filepath)["model_trainable_parameters"]
-
-    # Update the model's state dictionary with the loaded trainable parameters
-    model.load_state_dict(trainable_params, strict=False)
-
-    return model
-
-
-def save_model(
-    model_name: str,
-    model: nn.Module,
-    optimizer: torch.optim,
-    output_dir: str,
-    iteration: int,
-    cur_batch: int,
-    val_loss: float,
-):
-    output_dir = Path(output_dir)
-    output_dir.mkdir(exist_ok=True)
-    logger.info(f"Saving {model_name} model checkpoint to {output_dir}")
-
-    if model_name == "ltm":
-        torch.save(
-            {
-                "iteration": iteration,
-                "batch": cur_batch,
-                "model_trainable_parameters": {
-                    name: param for name, param in model.state_dict().items() if name in model.trainable_parameters
-                },
-                "optimizer_state_dict": optimizer.state_dict(),
-                "val_loss": val_loss,
-            },
-            f"{output_dir / model_name}.pth",
-        )
-    else:
-        torch.save(
-            {
-                "iteration": iteration,
-                "model_trainable_parameters": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "val_loss": val_loss,
-            },
-            f"{output_dir / model_name}.pth",
-        )
-
-
-def save_checkpoint(iteration: int, cur_batch: int, val_loss: float):
-    checkpoint_folder = f"checkpoint-{iteration}"
-    output_dir = os.path.join(run_dir, checkpoint_folder)
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    save_model("ltm", ltm_model, ltm_optimizer, output_dir, iteration, cur_batch, val_loss)
-    save_model("memory_model", memory_model, rl_optimizer, output_dir, iteration, cur_batch, val_loss)
-
-
-def _evaluate(data: dict) -> torch.Tensor:
-    batch_size, num_steps, _ = data["input_ids"].size()
-    episode_loss = 0.0
-
-    memory_module = MemoryModule(
-        agent.model.d_mem,
-        agent.model.num_vectors,
-        agent.model.dtype,
-        agent.model.memory_type,
-    )
-    memory_module.reset(batch_size)
-
-    for step in range(num_steps):
-        input_ids, attention_mask = _crop_batch(
-            data["input_ids"][:, step, :].contiguous(),
-            data["attention_mask"][:, step, :].contiguous(),
-        )
-
-        # Get high-level embeddings from LLM
-        high_level_embeddings = ltm_model.get_embeddings(
-            input_ids.to(ltm_model.first_device), attention_mask.to(ltm_model.first_device)
-        )
-
-        # Prepare action for agent
-        state = State(
-            memory=memory_module.memory,
-            attention_mask=attention_mask,
-            embeddings=high_level_embeddings,
-        ).to(agent.model.device)
-
-        # Get new memory vectors and update memory
-        action, _, _ = agent.act(state)
-        action = action.to(torch.device("cpu"))
-
-        # Compute loss and update
-        loss = ltm_model.get_output(
-            high_level_embeddings.to(ltm_model.second_device),
-            input_ids.to(ltm_model.second_device),
-            attention_mask.to(ltm_model.second_device),
-            memory_module.memory.to(ltm_model.second_device),
-        )
-
-        # Update memory
-        memory_module.update(action)
-
-        episode_loss += loss.float().item()
-        torch.cuda.empty_cache()
-        return episode_loss / num_steps
-
-
-def evaluate(dataset):
-    eval_dataloader = EpochDataloader(
-        dataset,
-        tokenizer,
-        model_max_length=ltm_model.max_seq_length,
-        max_sequence_len_in_batch=ltm_model.max_seq_length * 100,
-        batch_size=args.trainer_args.batch_size,
-        shuffle=False,
-        cut_by_shortest_article=args.trainer_args.cut_by_shortest_article,
-    )
-    ltm_model.freeze()
-    memory_model.freeze()
-
-    it, total_loss = 0, 0.0
-    with torch.no_grad():
-        for i, batch in enumerate(eval_dataloader):
-            if 0 < args.max_eval_steps <= i:
-                break
-            loss = _evaluate(batch)
-            total_loss += loss
-            it += 1
-
-    ltm_model.unfreeze()
-    memory_model.unfreeze()
-
-    return total_loss / it
+torch._logging.set_logs(dynamo=logging.DEBUG)
+torch._dynamo.config.verbose = True
 
 
 def _crop_batch(input_ids: torch.Tensor, attention_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -189,158 +48,288 @@ def _crop_batch(input_ids: torch.Tensor, attention_mask: torch.Tensor) -> tuple[
     return input_ids[:, :crop_by_len], attention_mask[:, :crop_by_len]
 
 
-def train_ltm(
-    ltm_model: LTM_GPT,
-    agent: Agent,
-    optim: torch.optim.SGD | torch.optim.Adam | torch.optim.AdamW,
-    data: dict,
-) -> float:
-    ltm_loss = 0.0
-    batch_size, num_steps, _ = data["input_ids"].size()
+class Trainer:
+    def __init__(
+        self,
+        ltm_model: LTM_GPT,
+        ltm_optimizer,
+        memory_model: MemoryModel,
+        memory_model_optimizer,
+        args,
+        train_dataset,
+        eval_dataset,
+        tokenizer,
+    ):
+        self.args = args
+        self.accelerator = Accelerator()
+        self.ltm_model, self.ltm_optimizer = self.accelerator.prepare(ltm_model, ltm_optimizer)
 
-    memory_module = MemoryModule(
-        agent.model.d_mem,
-        agent.model.num_vectors,
-        agent.model.dtype,
-        agent.model.memory_type,
-    )
-    memory_module.reset(batch_size)
+        self.memory_model, self.memory_model_optimizer = self.accelerator.prepare(memory_model, memory_model_optimizer)
 
-    for step in range(num_steps):
-        input_ids, attention_mask = _crop_batch(
-            data["input_ids"][:, step, :].contiguous(),
-            data["attention_mask"][:, step, :].contiguous(),
+        self.agent = Agent(self.memory_model)
+        self.memory_module = MemoryModule(
+            self.agent.model.d_mem,
+            self.agent.model.num_vectors,
+            self.agent.model.dtype,
+            self.agent.model.memory_type,
         )
-        input_ids, attention_mask = input_ids.to(ltm_model.first_device), attention_mask.to(ltm_model.first_device)
+        self.train_dataset = train_dataset
+        self.eval_dataset = eval_dataset
+        self.tokenizer = tokenizer
 
-        # Get high-level embeddings from LLM
-        high_level_embeddings = ltm_model.get_embeddings(input_ids, attention_mask)
+        self.eval_dataloader = self.accelerator.prepare(self.get_eval_dataloader())
+        self.train_dataloader = self.accelerator.prepare(self.get_train_dataloader())
 
-        # Prepare action for agent
-        state = State(
-            memory=memory_module.memory,
-            attention_mask=attention_mask,
-            embeddings=high_level_embeddings,
-        ).to(agent.model.device)
+    def get_eval_dataloader(self):
+        return EpochDataloader(
+            self.eval_dataset,
+            self.tokenizer,
+            model_max_length=self.ltm_model.max_seq_length,
+            max_sequence_len_in_batch=self.ltm_model.max_seq_length * 100,
+            batch_size=self.args.trainer_args.batch_size,
+            shuffle=False,
+            num_workers=2,
+            pin_memory=True,
+        )
 
-        # Get new memory vectors and update memory
+    def get_train_dataloader(self):
+        return EpochDataloader(
+            self.train_dataset,
+            self.tokenizer,
+            model_max_length=self.args.trainer_args.step_length,
+            max_sequence_len_in_batch=self.args.trainer_args.step_length * 100,
+            batch_size=self.args.trainer_args.batch_size,
+            shuffle=True,
+            num_workers=2,
+            pin_memory=True,
+        )
+
+    def _evaluate(self, data: dict) -> torch.Tensor:
+        batch_size, num_steps, _ = data["input_ids"].size()
+        episode_loss = 0.0
+
+        self.memory_module.reset(batch_size)
+
+        for step in range(num_steps):
+            input_ids, attention_mask = _crop_batch(
+                data["input_ids"][:, step, :].contiguous(),
+                data["attention_mask"][:, step, :].contiguous(),
+            )
+
+            loss, high_level_embeddings = self.ltm_model(input_ids, attention_mask, self.memory_module.memory)
+
+            episode_loss += loss.item()
+
+            # Prepare action for agent
+            state = State(
+                memory=self.memory_module.memory,
+                attention_mask=attention_mask,
+                embeddings=high_level_embeddings,
+            )
+
+            # Get new memory vectors and update memory
+            with torch.no_grad():
+                action, _, _ = self.agent.act(state)
+                # action = action.to(torch.device("cpu"))
+
+            # Update memory
+            self.memory_module.update(action)
+
+            return episode_loss / num_steps
+
+    def evaluate(self):
+        self.ltm_model.freeze()
+        self.memory_model.freeze()
+
+        it, total_loss = 0, 0.0
         with torch.no_grad():
-            action, _, _ = agent.act(state)
-            action = action.to(torch.device("cpu"))
+            for i, batch in enumerate(self.eval_dataloader):
+                if 0 < self.args.max_eval_steps <= i:
+                    break
+                loss = self._evaluate(batch)
+                total_loss += loss
+                it += 1
 
-        # Compute loss and update
-        loss = ltm_model.get_output(
-            high_level_embeddings,
-            input_ids.to(ltm_model.second_device),
-            attention_mask,
-            memory_module.memory.to(ltm_model.second_device),
-        )
+        return total_loss / it
 
-        loss.backward()
-        optim.step()
-        optim.zero_grad()
+    def save_models(self, output_dir):
+        logger.info(f"Saving models checkpoints to {output_dir}")
         torch.cuda.empty_cache()
 
-        ltm_loss += loss.float().item()
+        torch.save(
+            {
+                "cycle": self.cycle,
+                "batch_step": self.batch_step,
+                "model_parameters": self.ltm_model.state_dict(),
+                "optimizer_state_dict": self.ltm_optimizer.state_dict(),
+            },
+            f"{output_dir / 'ltm'}.pt",
+        )
+        torch.save(
+            {
+                "cycle": self.cycle,
+                "batch_step": self.batch_step,
+                "model_parameters": self.memory_model.state_dict(),
+                "optimizer_state_dict": self.memory_model_optimizer.state_dict(),
+            },
+            f"{output_dir / 'memory_model'}.pt",
+        )
 
-        # Update memory
-        memory_module.update(action)
+    def save_checkpoint(self):
+        global run_dir
+        global saved_checkpoints_queue
 
-    mean_loss_over_episode = ltm_loss / num_steps
-    wandb.log({"LTM train iteration loss": mean_loss_over_episode})
-    return mean_loss_over_episode
+        checkpoint_folder = f"checkpoint-{self.cycle}"
+        output_dir = run_dir / checkpoint_folder
+        output_dir.mkdir(exist_ok=True)
+        saved_checkpoints_queue.append(output_dir)
 
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
 
-def iterative_training() -> None:
-    """Iteratively train LTM and Memory models."""
-    global train_cycle, epoch
+        self.save_models(output_dir)
 
-    ltm_model_iterations = args.trainer_args.ltm_model_iterations
-    memory_model_iterations = args.trainer_args.memory_model_iterations
+        if len(saved_checkpoints_queue) > self.args.max_checkpoints:
+            oldest_checkpoint = saved_checkpoints_queue.popleft()
+            shutil.rmtree(oldest_checkpoint)
 
-    # First training iterations on LTM model
-    ltm_model.unfreeze()
-    agent.model.freeze()
+    def train_ltm_on_episode(self, data: dict) -> float:
 
-    is_ltm_training = True
-    ltm_iteration_count, memory_iteration_count = 0, 0
-    ltm_loss, memory_model_loss = 0.0, 0.0
-    memory_model_success = 0
+        episode_loss = 0.0
+        batch_size, num_steps, _ = data["input_ids"].size()
 
-    train_dataloader_len = len(train_dataloader)
-    batch_buffer, num_transitions_in_buffer = [], 0
+        self.memory_module.reset(batch_size)
 
-    for cur_batch, batch in enumerate(tqdm(train_dataloader, total=train_dataloader_len)):
-        if is_ltm_training:
-            ltm_episode_loss = train_ltm(ltm_model, agent, ltm_optimizer, batch)
-            ltm_loss += ltm_episode_loss
-            ltm_iteration_count += 1
+        for step in range(num_steps):
+            input_ids, attention_mask = _crop_batch(
+                data["input_ids"][:, step, :].contiguous(),
+                data["attention_mask"][:, step, :].contiguous(),
+            )
 
-            if ltm_iteration_count >= ltm_model_iterations:
-                ltm_iteration_count = 0
-                is_ltm_training = False
+            loss, high_level_embeddings = self.ltm_model(input_ids, attention_mask, self.memory_module.memory)
 
-                ltm_model.freeze()
-                agent.model.unfreeze()
-                gc.collect()
-                torch.cuda.empty_cache()
-        else:
-            bs, num_steps, _ = batch["input_ids"].shape
-            cur_transitions = bs * (num_steps - 1)
-            if cur_transitions + num_transitions_in_buffer < args.rl_params.min_transitions_per_update:
-                if cur_transitions:
-                    batch_buffer.append(batch)
-                num_transitions_in_buffer += cur_transitions
+            # # Get high-level embeddings from LLM
+            # high_level_embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
+
+            # # Compute loss and update
+            # loss = self.ltm_model.get_output(
+            #     high_level_embeddings,
+            #     input_ids,
+            #     attention_mask,
+            #     self.memory_module.memory,
+            # )
+
+            self.accelerator.backward(loss)
+            self.ltm_optimizer.step()
+            self.ltm_optimizer.zero_grad()
+
+            episode_loss += loss.item()
+
+            # Prepare action for agent
+            state = State(
+                memory=self.memory_module.memory,
+                attention_mask=attention_mask,
+                embeddings=high_level_embeddings,
+            )
+
+            # Get new memory vectors and update memory
+            with torch.no_grad():
+                action, _, _ = self.agent.act(state)
+                # action = action.to(torch.device("cpu"))
+
+            # Update memory
+            self.memory_module.update(action)
+
+        return episode_loss / num_steps
+
+    def train(self):
+
+        logger.info("Starting the training process...")
+        logger.info(
+            f"Number of trainable parameters (LTM) = {get_model_param_count(self.ltm_model, trainable_only=True)}"
+        )
+        logger.info(
+            f"Number of trainable parameters (MemoryModel) = {get_model_param_count(self.memory_model, trainable_only=True)}"
+        )
+
+        self.cycle, self.batch_step = 0, 0
+        global train_cycle, epoch
+
+        ltm_model_iterations = self.args.trainer_args.ltm_model_iterations
+        memory_model_iterations = self.args.trainer_args.memory_model_iterations
+
+        # First training iterations on LTM model
+        self.ltm_model.unfreeze()
+        self.agent.model.freeze()
+
+        is_ltm_training = True
+        ltm_iteration_count, memory_iteration_count = 0, 0
+        ltm_loss, memory_model_loss = 0.0, 0.0
+
+        batch_buffer, num_transitions_in_buffer = [], 0
+
+        for batch in tqdm(self.train_dataloader, total=len(self.train_dataloader)):
+            if is_ltm_training:
+                ltm_loss += self.train_ltm_on_episode(batch)
+                ltm_iteration_count += 1
+                if ltm_iteration_count >= ltm_model_iterations:
+                    ltm_iteration_count = 0
+                    is_ltm_training = False
+                    self.ltm_model.freeze()
+                    self.agent.model.unfreeze()
             else:
-                batch_buffer.append(batch)
-                memory_model_episode_loss = train_rl(batch_buffer, agent, rl_optimizer, ltm_model, args)
-                if memory_model_episode_loss is not None:
-                    memory_model_loss += memory_model_episode_loss
-                    memory_model_success += 1
+                bs, num_steps, _ = batch["input_ids"].shape
+                cur_transitions = bs * (num_steps - 1)
+                if cur_transitions + num_transitions_in_buffer < self.args.rl_params.min_transitions_per_update:
+                    if cur_transitions:
+                        batch_buffer.append(batch)
+                        num_transitions_in_buffer += cur_transitions
+                else:
+                    batch_buffer.append(batch)
 
-                memory_iteration_count += 1
-                num_transitions_in_buffer = 0
-
-                if memory_iteration_count >= memory_model_iterations:
-                    memory_iteration_count = 0
-                    is_ltm_training = True
-                    batch_buffer = []
-
-                    # Logging and validation after cycle
-                    train_cycle += 1
-                    ltm_loss /= ltm_model_iterations
-                    if memory_model_success:
-                        memory_model_loss /= memory_model_success
-
-                    val_loss = evaluate(val_dataset)
-
-                    logger.info(
-                        f"""Training cycle {train_cycle} done.\nLTM train loss: {ltm_loss} \
-                    \nLTM val loss: {val_loss}\nMemory model loss: {memory_model_loss}"""
+                    memory_model_loss += train_rl(
+                        batch_buffer,
+                        self.agent,
+                        self.memory_model_optimizer,
+                        self.ltm_model,
+                        self.args,
+                        self.accelerator,
                     )
-                    logger.info("-" * 100)
 
-                    wandb.log({"LTM train cycle loss": ltm_loss})
-                    wandb.log({"Memory Model train cycle loss": memory_model_loss})
-                    wandb.log({"LTM val loss": val_loss})
+                    memory_iteration_count += 1
+                    batch_buffer, num_transitions_in_buffer = [], 0
 
-                    if not train_cycle % args.checkpoint_interval:
-                        save_checkpoint(train_cycle, cur_batch, val_loss=val_loss)
+                    if memory_iteration_count >= memory_model_iterations:
+                        memory_iteration_count = 0
+                        is_ltm_training = True
 
-                    ltm_loss, memory_model_loss, memory_model_success = 0.0, 0.0, 0
+                        # Logging and validation after cycle
+                        self.cycle += 1
+                        ltm_loss /= ltm_model_iterations
+                        memory_model_loss /= memory_model_iterations
 
-                    ltm_model.unfreeze()
-                    agent.model.freeze()
-                    torch.cuda.empty_cache()
-                    gc.collect()
+                        val_loss = self.evaluate()
 
-    logger.info(f"Epoch {epoch} done!")
-    logger.info("-" * 100)
+                        logger.info(
+                            f"""Training cycle {self.cycle} done.\nLTM train loss: {ltm_loss} \
+                        \nLTM val loss: {val_loss}\nMemory model loss: {memory_model_loss}"""
+                        )
 
+                        tensorboard_writer.add_scalar("Loss/ltm_val_loss", val_loss, self.cycle)
+                        tensorboard_writer.add_scalar("Loss/ltm_train_cycle_loss", ltm_loss, self.cycle)
+                        tensorboard_writer.add_scalar(
+                            "Loss/memory_model_train_cycle_loss", memory_model_loss, self.cycle
+                        )
 
-###############################################################################
-# Parse arguments
-###############################################################################
+                        if not self.cycle % self.args.checkpoint_interval:
+                            self.save_checkpoint()
+
+                        ltm_loss, memory_model_loss = 0.0, 0.0
+
+                        self.ltm_model.unfreeze()
+                        self.agent.model.freeze()
+
+            self.batch_step += 1
 
 
 def init_arguments() -> argparse.Namespace:
@@ -350,130 +339,83 @@ def init_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-args = init_arguments()
-args = load_config(args.config)
-set_seed(args.seed)
-wandb.init(project="rugpt-ltm", name=args.experiment_name, config=asdict(args))
+def main():
+    global tensorboard_writer, saved_checkpoints_queue, run_dir
+    ###############################################################################
+    # Parse arguments and create directories
+    ###############################################################################
+    args = init_arguments()
+    args = load_config(args.config)
+    set_seed(args.seed)
+
+    run_dir = Path(args.checkpoint_dir) / args.experiment_name / "runs"
+    tensorboard_writer = SummaryWriter(log_dir=run_dir)
+
+    log_dir = run_dir / "logs.log"
+    file_handler = logging.FileHandler(log_dir)
+    file_handler.setFormatter(ColourFormatter())
+    logger.addHandler(file_handler)
+    subprocess.Popen(["python3", "log_mem_usage.py", log_dir])
+
+    saved_checkpoints_queue = deque()
+
+    ###############################################################################
+    # Load data
+    ###############################################################################
+    dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
+    train_dataset = WikiDataset(data_path=str(dataset_path), split="train")
+    val_dataset = WikiDataset(data_path=str(dataset_path), split="val")
+
+    ###############################################################################
+    # Build the model
+    ###############################################################################
+    dtype = torch.float16 if args.trainer_args.fp16 else torch.float32
+
+    ltm_model, tokenizer = load_ltm_model(args)
+
+    memory_model_device = torch.device(args.memory_model_params.device)
+    memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=torch.float32)
+
+    ###############################################################################
+    # Create optimizers
+    ###############################################################################
+
+    if args.trainer_args.optimizer.lower() == "sgd":
+        ltm_optimizer = torch.optim.SGD(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
+        rl_optimizer = torch.optim.SGD(
+            memory_model.parameters(),
+            lr=args.trainer_args.memory_model_learning_rate,
+        )
+    elif args.trainer_args.optimizer.lower() == "adam":
+        ltm_optimizer = torch.optim.Adam(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
+        rl_optimizer = torch.optim.Adam(
+            memory_model.parameters(),
+            lr=args.trainer_args.memory_model_learning_rate,
+        )
+    elif args.trainer_args.optimizer.lower() == "adamw":
+        ltm_optimizer = torch.optim.AdamW(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
+        rl_optimizer = torch.optim.AdamW(
+            memory_model.parameters(),
+            lr=args.trainer_args.memory_model_learning_rate,
+        )
+
+    ###############################################################################
+    # Train
+    ###############################################################################
+
+    trainer = Trainer(ltm_model, ltm_optimizer, memory_model, rl_optimizer, args, train_dataset, val_dataset, tokenizer)
+
+    try:
+        for epoch in itertools.count(start=1):  # epoch == traverse over train dataset once
+            trainer.train()
+            if epoch == args.trainer_args.num_train_epochs:
+                logger.info("-" * 100)
+                logger.info("End of training.")
+                break
+    except KeyboardInterrupt:
+        logger.info("-" * 100)
+        logger.info("Exiting from training early")
 
 
-# Create run directory and directory for saving checkpoints
-run_name = f"run-{wandb.run.id}"
-run_dir = os.path.join(args.checkpoint_dir, run_name)
-if not os.path.exists(run_dir):
-    os.makedirs(run_dir)
-
-log_dir = os.path.join(run_dir, "logs.log")
-file_handler = logging.FileHandler(log_dir)
-file_handler.setFormatter(ColourFormatter())
-logger.addHandler(file_handler)
-
-# subprocess.Popen(["python3", "log_memory_usage.py", log_dir])
-
-###############################################################################
-# Load data
-###############################################################################
-dataset_path = Path(args.content_dir) / "data" / "dataset"
-dataset_path.resolve()
-dataset_path = str(dataset_path)
-train_dataset = WikiDataset(data_path=dataset_path, split="train")
-val_dataset = WikiDataset(data_path=dataset_path, split="val")
-
-###############################################################################
-# Build the model
-###############################################################################
-dtype = torch.float16 if args.trainer_args.fp16 else torch.float32
-ltm_model, tokenizer = load_ltm_model(args)
-
-memory_model_device = torch.device(args.memory_model_params.device)
-memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=dtype).to(memory_model_device)
-
-###############################################################################
-# Create optimizers
-###############################################################################
-ltm_model.unfreeze()
-memory_model.unfreeze()
-
-if args.trainer_args.optimizer.lower() == "sgd":
-    ltm_optimizer = torch.optim.SGD(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
-    rl_optimizer = torch.optim.SGD(
-        memory_model.parameters(),
-        lr=args.trainer_args.memory_model_learning_rate,
-    )
-elif args.trainer_args.optimizer.lower() == "adam":
-    ltm_optimizer = torch.optim.Adam(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
-    rl_optimizer = torch.optim.Adam(
-        memory_model.parameters(),
-        lr=args.trainer_args.memory_model_learning_rate,
-    )
-elif args.trainer_args.optimizer.lower() == "adamw":
-    ltm_optimizer = torch.optim.AdamW(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
-    rl_optimizer = torch.optim.AdamW(
-        memory_model.parameters(),
-        lr=args.trainer_args.memory_model_learning_rate,
-    )
-
-logger.info("Starting the training process...")
-logger.info(f"Number of trainable parameters (LTM) = {get_model_param_count(ltm_model, trainable_only=True)}")
-logger.info(
-    f"Number of trainable parameters (MemoryModel) = {get_model_param_count(memory_model, trainable_only=True)}"
-)
-logger.info("-" * 100)
-
-###############################################################################
-# Training code
-###############################################################################
-
-train_dataloader = EpochDataloader(
-    train_dataset,
-    tokenizer,
-    model_max_length=args.trainer_args.step_length,
-    max_sequence_len_in_batch=args.trainer_args.step_length * 100,
-    batch_size=args.trainer_args.batch_size,
-    shuffle=True,
-    cut_by_shortest_article=args.trainer_args.cut_by_shortest_article,
-)
-
-agent = Agent(memory_model)
-
-###############################################################################
-# Train
-###############################################################################
-
-train_iteration = 0  # iteration is a number of batch in train dataset
-train_cycle = 0  # cycle of training ltm and memory_model
-
-try:
-    for epoch in itertools.count(start=1):  # epoch == traverse over train dataset once
-        iterative_training()
-        if epoch == args.trainer_args.num_train_epochs:
-            logger.info("-" * 100)
-            logger.info("End of training")
-            wandb.finish()
-            break
-except KeyboardInterrupt:
-    logger.info("-" * 100)
-    logger.info("Exiting from training early")
-
-###############################################################################
-# Test
-###############################################################################
-
-# # todo
-# ltm_model_path = (
-#     "/home/nikita_u/study/nir/repo/rugpt-memory/checkpoints/" + f"run-{wandb.run.id}" + "/checkpoint-1/ltm.pth"
-# )
-# # memory_model_path = ...
-
-# ltm_model, tokenizer = load_ltm_model(args)
-# print(ltm_model.trainable_parameters)
-# ltm_model = load_trainable_parameters(ltm_model, ltm_model_path)
-# # memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=torch.float32)
-# # memory_model = load_trainable_parameters(memory_model, memory_model_path)
-# wandb.finish()
-# # Run on test data
-# test_dataset = WikiDataset(data_path=dataset_path, split="test")
-# test_loss = evaluate(test_dataset)
-
-# logger.info("=" * 100)
-# logger.info("| End of training | test loss {:5.2f} | test ppl {:9.3f}".format(test_loss, math.exp(test_loss)))
-# logger.info("=" * 100)
+if __name__ == "__main__":
+    main()

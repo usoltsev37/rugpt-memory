@@ -38,7 +38,7 @@ class RLParams:
     clip: float = field(default=0.2)
     entropy_coef: float = field(default=1e-2)
     clip_grad_norm: float = field(default=1.0)
-    kl_target: float = field(default=0.5)
+    kl_target: float = field(default=0.1)
 
 
 @dataclass
@@ -75,6 +75,7 @@ class TrainingArguments:
     checkpoint_dir: str
     checkpoint_interval: int
     max_eval_steps: int
+    max_checkpoints: int
     base_model_params: BaseModelParams
     memory_model_params: MemoryModelParams
     rl_params: RLParams

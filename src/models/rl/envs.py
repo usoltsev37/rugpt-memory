@@ -9,8 +9,13 @@ from src.models.rl.utils import Action, State
 from src.utils.train_config import SyntheticTaskEnvParams
 
 
-def _crop_batch(input_ids: torch.Tensor, attention_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    crop_by_len = random.randint(2, input_ids.shape[1])
+def _crop_batch(
+    input_ids: torch.Tensor, attention_mask: torch.Tensor, rb: int = None
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if rb is not None:
+        crop_by_len = random.randint(2, rb)
+    else:
+        crop_by_len = random.randint(2, input_ids.shape[1])
     return input_ids[:, :crop_by_len], attention_mask[:, :crop_by_len]
 
 
@@ -53,16 +58,14 @@ class LTMEnvironment:
             data["attention_mask"][:, self.cur_step, :].contiguous(),
         )
 
+        self.input_ids = input_ids
+        self.attention_mask = attention_mask
+
         # Get embeddings for the first state
-        input_ids, attention_mask = input_ids.to(self.ltm_model.first_device), attention_mask.to(
-            self.ltm_model.first_device
-        )
         with torch.no_grad():
             embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
 
-        self.input_ids = input_ids.cpu()
-        self.embeddings = embeddings.cpu()
-        self.attention_mask = attention_mask.cpu()
+        self.embeddings = embeddings
         self.memory_module.reset(bs)
 
         return State(
@@ -75,34 +78,31 @@ class LTMEnvironment:
         self.cur_step += 1
 
         reward = self.ltm_model.get_output(
-            self.embeddings.to(self.ltm_model.second_device),
-            self.input_ids.to(self.ltm_model.second_device),
-            self.attention_mask.to(self.ltm_model.second_device),
-            self.memory_module.memory.to(self.ltm_model.second_device),
+            self.embeddings,
+            self.input_ids,
+            self.attention_mask,
+            self.memory_module.memory.to(self.embeddings.device),
             reward_for_agent=True,
         )
 
         # Try other prefixes
-        for _ in range(4):
-            input_ids, attention_mask = _crop_batch(
-                self.input_ids,
-                self.attention_mask,
-            )
-
-            input_ids, attention_mask = input_ids.to(self.ltm_model.first_device), attention_mask.to(
-                self.ltm_model.first_device
-            )
+        for _ in range(2):
+            input_ids, attention_mask = _crop_batch(self.input_ids, self.attention_mask, self.attention_mask[0].sum(-1))
 
             with torch.no_grad():
                 embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
 
             prefix_reward = self.ltm_model.get_output(
-                embeddings.to(self.ltm_model.second_device),
-                input_ids.to(self.ltm_model.second_device),
-                attention_mask.to(self.ltm_model.second_device),
-                self.memory_module.memory.to(self.ltm_model.second_device),
+                embeddings,
+                input_ids,
+                attention_mask,
+                self.memory_module.memory,
                 reward_for_agent=True,
             )
+
+            if torch.isnan(prefix_reward).any() or torch.isinf(prefix_reward).any():
+                print(f"Found nan in reward with input_ids: {input_ids}")
+
             reward += prefix_reward
 
         reward /= 5
@@ -121,13 +121,13 @@ class LTMEnvironment:
             )
 
             embeddings = self.ltm_model.get_embeddings(
-                input_ids.to(self.ltm_model.first_device),
-                attention_mask.to(self.ltm_model.first_device),
+                input_ids,
+                attention_mask,
             )
 
-            self.input_ids = input_ids.cpu()
+            self.input_ids = input_ids
             self.embeddings = embeddings.cpu()
-            self.attention_mask = attention_mask.cpu()
+            self.attention_mask = attention_mask
 
         return (
             State(

@@ -1,0 +1,54 @@
+import psutil
+import time
+import logging
+import sys
+import torch
+# from src.utils.logger_singleton import ColourFormatter
+import subprocess
+
+
+class ColourFormatter(logging.Formatter):
+    green = "\x1b[32m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+    format = "[%(asctime)s: %(levelname)s] %(message)s (%(filename)s:%(lineno)d)"
+
+    FORMATS = {
+        logging.DEBUG: yellow + format + reset,
+        logging.INFO: green + format + reset,
+        logging.WARNING: yellow + format + reset,
+        logging.ERROR: red + format + reset,
+        logging.CRITICAL: bold_red + format + reset
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+    
+def log_memory_usage(logger1):
+    logger1.info(f"RAM usage: {psutil.virtual_memory().percent}%")
+    cuda_result = subprocess.run(['nvidia-smi', '--query-gpu=memory.total,memory.used,memory.free', '--format=csv,noheader,nounits'],
+                                 capture_output=True, text=True, check=True).stdout
+    
+    info = cuda_result.split('\n')
+    logger1.info(f"CUDA:0 total, used, available: {info[0]}")
+    logger1.info(f"CUDA:1 total, used, available: {info[1]}")
+    
+    # logger.info(f"torch.cuda.memory_allocated(): {torch.cuda.memory_allocated()}")
+    # logger.info(f"torch.cuda.max_memory_allocated(): {torch.cuda.max_memory_allocated()}")
+
+if __name__ == "__main__":
+    file = sys.argv[1]
+    
+    logger1 = logging.getLogger('train')
+    logger1.setLevel(logging.INFO)
+    handler1 = logging.FileHandler(file)
+    handler1.setFormatter(ColourFormatter())
+    logger1.addHandler(handler1)
+    
+    while True:
+        log_memory_usage(logger1)
+        time.sleep(15)

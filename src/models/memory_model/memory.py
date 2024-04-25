@@ -7,10 +7,7 @@ from src.models.rl.utils import Action
 class MemoryModule:
     """External memory for the language model."""
 
-    def __init__(self, d_mem: int,
-                 num_vectors: int,
-                 dtype: torch.dtype,
-                 memory_type: str = "conservative"):
+    def __init__(self, d_mem: int, num_vectors: int, dtype: torch.dtype, memory_type: str = "conservative"):
         """Initialize the MemoryModule.
 
         The memory's dimensions are [batch_size x num_vectors x d_mem].
@@ -27,12 +24,13 @@ class MemoryModule:
 
     def reset(self, batch_size: int) -> None:
         """Initialize a new memory"""
-        self.memory = torch.zeros(batch_size, self.num_vectors, self.d_mem, dtype=self.dtype)
+        if self.memory is None or self.memory.shape[0] != batch_size:
+            self.memory = torch.zeros(batch_size, self.num_vectors, self.d_mem)
+        else:
+            self.memory.zero_()
 
     def update(self, action: Action) -> torch.Tensor:
-        mask = F.one_hot(action.positions,
-                         num_classes=self.num_vectors)
+        mask = F.one_hot(action.positions, num_classes=self.num_vectors)
         mask = mask.unsqueeze(-1).expand_as(self.memory)
-        mask = mask.to(self.dtype)
-        self.memory = torch.where(mask == 1, action.memory_vectors.to(self.dtype).to(self.memory.device), self.memory)
+        self.memory = torch.where(mask == 1, action.memory_vectors, self.memory.to(action.memory_vectors.device))
         return self.memory

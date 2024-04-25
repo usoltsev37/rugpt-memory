@@ -28,22 +28,22 @@ class DenseNetwork(nn.Module):
 
         if n_hid_layers:
             layers = (
-                [nn.Linear(input_dim, hidden_dim, dtype=dtype), nn.Dropout(dropout)]
+                [nn.Linear(input_dim, hidden_dim), nn.Dropout(dropout)]
                 if dropout > 0
-                else [nn.Linear(input_dim, hidden_dim, dtype=dtype)]
+                else [nn.Linear(input_dim, hidden_dim)]
             )
 
             for _ in range(n_hid_layers - 1):
                 layers += (
-                    [nn.Linear(hidden_dim, hidden_dim, dtype=dtype), nn.Dropout(dropout)]
+                    [nn.Linear(hidden_dim, hidden_dim), nn.Dropout(dropout)]
                     if dropout > 0
-                    else [nn.Linear(hidden_dim, hidden_dim, dtype=dtype)]
+                    else [nn.Linear(hidden_dim, hidden_dim)]
                 )
 
-            layers.append(nn.Linear(hidden_dim, out_dim, dtype=dtype))
+            layers.append(nn.Linear(hidden_dim, out_dim))
 
         else:
-            layers = [nn.Linear(input_dim, out_dim, dtype=dtype)]
+            layers = [nn.Linear(input_dim, out_dim)]
 
         self.layers = nn.Sequential(*layers)
 

@@ -1,12 +1,14 @@
 import torch
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
+import torch.nn.functional as F
+from pathlib import Path
 
 from src.data.wiki_dataset import WikiDataset
 
 
 class EpochDataloader(DataLoader):
-    """Dataloader class for `WikiDataset`. By epoch we mean learning from batch articles of the data. A batch of
+    """Dataloader class for WikiDataset. By epoch we mean learning from batch articles of the data. A batch of
     articles is obtained as follows: they are tokenized, trimmed at a random place to the same length (this length
     is the minimum length of a tokenized article in a batch) and converted into a tensor.
     """
@@ -15,55 +17,40 @@ class EpochDataloader(DataLoader):
         self,
         dataset: WikiDataset,
         tokenizer: AutoTokenizer.from_pretrained,
-        model_max_length: int = 2048,
-        max_sequence_len_in_batch: int = 2048 * 100,
-        batch_size: int = 8,
+        model_max_length: int = 512,
+        max_sequence_len_in_batch: int = 512 * 100,
+        batch_size: int = 4,
         shuffle: bool = False,
-        cut_by_shortest_article: bool = True,
         **kwargs
     ):
         self.iterator = None
         self.tokenizer = tokenizer
         self.model_max_length = model_max_length
         self.max_sequence_len_in_batch = max_sequence_len_in_batch
-        self.cut_by_shortest_article = cut_by_shortest_article
         super().__init__(dataset, batch_size, shuffle, collate_fn=self._collate_fn, **kwargs)
 
     def _collate_fn(self, batch: [str]) -> dict:
-        if self.cut_by_shortest_article:
-            tokenized_batch = self.tokenizer(batch, return_tensors="pt", padding=True)
-            shortest_article_len = tokenized_batch["attention_mask"].sum(dim=-1).min()
-            bs = tokenized_batch["input_ids"].shape[0]
-            add_tokens_num = (self.model_max_length - shortest_article_len) % self.model_max_length
-            if add_tokens_num:
-                add_tokens = torch.full((bs, add_tokens_num), self.tokenizer.pad_token_id).long()
-                tokenized_batch["input_ids"] = torch.cat(
-                    (
-                        tokenized_batch["input_ids"][:, :shortest_article_len],
-                        add_tokens,
-                    ),
-                    dim=-1,
-                )
-                tokenized_batch["attention_mask"] = torch.cat(
-                    (
-                        tokenized_batch["attention_mask"][:, :shortest_article_len],
-                        add_tokens,
-                    ),
-                    dim=-1,
-                )
+        tokenized_batch = self.tokenizer(batch, return_tensors="pt", padding=True)
+        shortest_article_len = tokenized_batch["attention_mask"].sum(dim=-1).min()
+        
+        tokenized_batch["input_ids"] = tokenized_batch["input_ids"][:, :shortest_article_len]
+        tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"][:, :shortest_article_len]
+        
+        add_tokens_num = (self.model_max_length - shortest_article_len) % self.model_max_length
+         
+        if add_tokens_num:
+            if self.model_max_length - add_tokens_num == 1:
+                tokenized_batch["input_ids"] = tokenized_batch["input_ids"][:, :-1]
+                tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"][:, :-1]
             else:
-                tokenized_batch["input_ids"] = tokenized_batch["input_ids"][:, :shortest_article_len]
-                tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"][:, :shortest_article_len]
-
-        else:
-            tokenized_batch = self.tokenizer(
-                batch,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=self.max_sequence_len_in_batch,
-                pad_to_multiple_of=self.model_max_length,
-            )
+                tokenized_batch["input_ids"] = F.pad(tokenized_batch["input_ids"],
+                                                     (0, add_tokens_num),
+                                                     "constant",
+                                                     self.tokenizer.pad_token_id).long()
+                tokenized_batch["attention_mask"] = F.pad(tokenized_batch["attention_mask"],
+                                    (0, add_tokens_num),
+                                    "constant",
+                                    self.tokenizer.pad_token_id).long()
 
         # Reshape to [batch_size, episode_len, len_seq_in_episode]
         tokenized_batch["input_ids"] = tokenized_batch["input_ids"].view(len(batch), -1, self.model_max_length)
@@ -78,3 +65,16 @@ class EpochDataloader(DataLoader):
 
     def __next__(self) -> torch.Tensor:
         return next(self.iterator)
+
+
+# dataset_path = Path("/home/ybelova/repos/rugpt-memory") / "data" / "dataset"
+# dataset_path.resolve()
+# dataset_path = str(dataset_path)
+# train_dataset = WikiDataset(data_path=dataset_path, split="train")
+# tokenizer = AutoTokenizer.from_pretrained("ai-forever/rugpt3small_based_on_gpt2")
+# tokenizer.padding_side = "right"
+
+# dataloader = EpochDataloader(train_dataset, tokenizer)
+# for el in dataloader:
+#     print(el['input_ids'].shape)
+#     break

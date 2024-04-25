@@ -56,7 +56,7 @@ class MemoryModel(torch.nn.Module):
         """
         embeddings, attention_mask = state.embeddings, state.attention_mask
         enc_out = self.encoder(embeddings, attention_mask)
-        dec_out = self.decoder(state.memory, enc_out, attention_mask)
+        dec_out = self.decoder(state.memory.to(embeddings.device), enc_out, attention_mask)
         action = self.action_sampler(dec_out)
         return action
 

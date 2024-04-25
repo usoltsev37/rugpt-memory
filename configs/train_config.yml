@@ -1,11 +1,12 @@
-experiment_name: small_memory
+experiment_name: num_workers
 seed: 42
 content_dir: '.'
 pretrained_model_name_or_path: ai-forever/rugpt3small_based_on_gpt2
-checkpoint_dir: /home/nikita_u/study/nir/repo/rugpt-memory/checkpoints
-checkpoint_base_cache_dir: /home/nikita_u/study/nir/repo/rugpt-memory/checkpoints/base/huggingface
-checkpoint_interval: 15
+checkpoint_dir: /media/public/ybelova/rugpt-memory/checkpoints
+checkpoint_base_cache_dir: /home/ybelova/repos/rugpt-memory/checkpoints/base/huggingface
+checkpoint_interval: 1
 max_eval_steps: 32
+max_checkpoints: 5
 
 base_model_params:
   load_in_4bit: false
@@ -15,7 +16,7 @@ base_model_params:
 memory_model_params:
   device: cuda:0
   num_vectors: 8
-  d_mem: 64
+  d_mem: 32
   n_enc_block: 1
   n_dec_block: 1
 
@@ -23,10 +24,10 @@ memory_model_params:
 trainer_args:
   warmup_steps: 0
   gradient_accumulation_steps: 1
-  fp16: False
+  fp16: True
   num_train_epochs: 1
-  ltm_model_iterations: 20
-  memory_model_iterations: 10
+  ltm_model_iterations: 3
+  memory_model_iterations: 3
   batch_size: 4
   cut_by_shortest_article: True
   optimizer: adamw
@@ -35,7 +36,7 @@ trainer_args:
   step_length: 512
 
 rl_params:
-  batches_per_update: 10
+  batches_per_update: 5
   batch_size: 4
   min_transitions_per_update: 32
 

@@ -1,5 +1,6 @@
 import torch
 from torch.distributions import Bernoulli, Categorical, Normal
+from torch.utils.tensorboard import SummaryWriter
 
 import wandb
 from src.models.ltm_gpt.ltm_gpt import LTM_GPT
@@ -72,6 +73,7 @@ def train_rl(
     optimizer: torch.optim,
     ltm_model: LTM_GPT,
     train_config: TrainingArguments,
+    accelerator,
 ):
     """
     Training a memory model using reinforcement learning with a fixed LTM model.
@@ -95,7 +97,7 @@ def train_rl(
         transitions.extend(batch_traj)
 
     agent.model.train()
-    mean_loss = reinforce.update(transitions)
-    wandb.log({"Memory Model train iteration loss": mean_loss})
+    mean_loss = reinforce.update(transitions, accelerator)
+    # tensorboard_writer.add_scalar("Loss/memory_model_train_iteration_loss", mean_loss)
 
     return mean_loss
