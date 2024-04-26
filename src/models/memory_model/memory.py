@@ -29,8 +29,7 @@ class MemoryModule:
         else:
             self.memory.zero_()
 
-    def update(self, action: Action) -> torch.Tensor:
+    def update(self, action: Action):
         mask = F.one_hot(action.positions, num_classes=self.num_vectors)
-        mask = mask.unsqueeze(-1).expand_as(self.memory)
-        self.memory = torch.where(mask == 1, action.memory_vectors, self.memory.to(action.memory_vectors.device))
-        return self.memory
+        mask = mask.unsqueeze(-1).expand_as(self.memory).to(self.memory.device)
+        self.memory = torch.where(mask == 1, action.memory_vectors.to(self.memory.device), self.memory)

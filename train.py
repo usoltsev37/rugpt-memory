@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.optim
 from collections import deque
 import shutil
+import copy
 
 
 from src.utils.logger_singleton import ColourFormatter
@@ -40,6 +41,10 @@ from src.utils.train_config import *
 
 torch._logging.set_logs(dynamo=logging.DEBUG)
 torch._dynamo.config.verbose = True
+
+import faulthandler
+
+faulthandler.enable()
 
 
 def _crop_batch(input_ids: torch.Tensor, attention_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -82,8 +87,8 @@ class Trainer:
         return EpochDataloader(
             self.eval_dataset,
             self.tokenizer,
-            model_max_length=self.ltm_model.max_seq_length,
-            max_sequence_len_in_batch=self.ltm_model.max_seq_length * 100,
+            model_max_length=self.args.trainer_args.step_length,
+            max_sequence_len_in_batch=self.args.trainer_args.step_length * 100,
             batch_size=self.args.trainer_args.batch_size,
             shuffle=False,
             num_workers=2,
@@ -114,7 +119,7 @@ class Trainer:
                 data["attention_mask"][:, step, :].contiguous(),
             )
 
-            loss, high_level_embeddings = self.ltm_model(input_ids, attention_mask, self.memory_module.memory)
+            loss, embeddings = self.ltm_model(input_ids, attention_mask, self.memory_module.memory)
 
             episode_loss += loss.item()
 
@@ -122,7 +127,7 @@ class Trainer:
             state = State(
                 memory=self.memory_module.memory,
                 attention_mask=attention_mask,
-                embeddings=high_level_embeddings,
+                embeddings=embeddings,
             )
 
             # Get new memory vectors and update memory
@@ -137,7 +142,7 @@ class Trainer:
     def evaluate(self):
         self.ltm_model.freeze()
         self.memory_model.freeze()
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
 
         it, total_loss = 0, 0.0
         with torch.no_grad():
@@ -152,8 +157,6 @@ class Trainer:
 
     def save_models(self, output_dir):
         logger.info(f"Saving models checkpoints to {output_dir}")
-        torch.cuda.empty_cache()
-
         torch.save(
             {
                 "cycle": self.cycle,
@@ -163,6 +166,7 @@ class Trainer:
             },
             f"{output_dir / 'ltm'}.pt",
         )
+
         torch.save(
             {
                 "cycle": self.cycle,
@@ -179,7 +183,6 @@ class Trainer:
 
         checkpoint_folder = f"checkpoint-{self.cycle}"
         output_dir = run_dir / checkpoint_folder
-        output_dir.mkdir(exist_ok=True)
         saved_checkpoints_queue.append(output_dir)
 
         if not os.path.exists(output_dir):
@@ -203,9 +206,8 @@ class Trainer:
                 data["input_ids"][:, step, :].contiguous(),
                 data["attention_mask"][:, step, :].contiguous(),
             )
-            input_ids = input_ids.to(self.ltm_model.first_device)
-            attention_mask = attention_mask.to(self.ltm_model.first_device)
-            loss, high_level_embeddings = self.ltm_model(input_ids, attention_mask, self.memory_module.memory)
+
+            loss, embeddings = self.ltm_model(input_ids, attention_mask, self.memory_module.memory)
 
             loss.backward()
             self.ltm_optimizer.step()
@@ -217,7 +219,7 @@ class Trainer:
             state = State(
                 memory=self.memory_module.memory,
                 attention_mask=attention_mask,
-                embeddings=high_level_embeddings,
+                embeddings=embeddings,
             )
 
             # Get new memory vectors and update memory
@@ -252,8 +254,16 @@ class Trainer:
         is_ltm_training = True
         ltm_iteration_count, memory_iteration_count = 0, 0
         ltm_loss, memory_model_loss = 0.0, 0.0
-
         batch_buffer, num_transitions_in_buffer = [], 0
+
+        # self.model = nn.Sequential(nn.Linear(10000, 10), nn.Linear(10, 500))
+
+        # batch_buffer, num_transitions_in_buffer = [], 0
+        # for _ in tqdm(range(10000), total=10000):
+        #     self.cycle += 1
+        #     self.save_checkpoint()
+
+        # return
 
         for batch in tqdm(self.train_dataloader, total=len(self.train_dataloader)):
             if is_ltm_training:
@@ -273,21 +283,26 @@ class Trainer:
                         num_transitions_in_buffer += cur_transitions
                 else:
                     batch_buffer.append(batch)
-
                     memory_model_loss += train_rl(
                         batch_buffer,
                         self.agent,
                         self.memory_model_optimizer,
                         self.ltm_model,
+                        self.memory_module,
                         self.args,
                     )
+                    import time
 
+                    time.sleep(30)
                     memory_iteration_count += 1
                     batch_buffer, num_transitions_in_buffer = [], 0
 
                     if memory_iteration_count >= memory_model_iterations:
                         memory_iteration_count = 0
                         is_ltm_training = True
+
+                        p = next(self.memory_model.parameters())
+                        logger.info(f"Memory Model weights before first cycle: {p}")
 
                         # Logging and validation after cycle
                         self.cycle += 1
@@ -334,84 +349,81 @@ def setup_logger_process():
     return subprocess.Popen(["python3", "log_mem_usage.py", log_dir])
 
 
-def main():
-    global tensorboard_writer, saved_checkpoints_queue, run_dir, logger_process
-    ###############################################################################
-    # Parse arguments and create directories
-    ###############################################################################
-    args = init_arguments()
-    args = load_config(args.config)
-    set_seed(args.seed)
+# global tensorboard_writer, saved_checkpoints_queue, run_dir, logger_process
+###############################################################################
+# Parse arguments and create directories
+###############################################################################
+args = init_arguments()
+args = load_config(args.config)
+set_seed(args.seed)
 
-    run_dir = Path(args.checkpoint_dir) / args.experiment_name / "runs"
+run_dir = Path(args.checkpoint_dir) / args.experiment_name / "runs"
+log_dir = run_dir / "logs.log"
+file_handler = logging.FileHandler(log_dir)
+file_handler.setFormatter(ColourFormatter())
+logger.addHandler(file_handler)
 
-    # PROCESS WILL CLOSE AFTER MAIN COMPLETION
-    logger_process = setup_logger_process()
+# PROCESS WILL CLOSE AFTER MAIN COMPLETION
+# logger_process = setup_logger_process()
 
-    tensorboard_writer = SummaryWriter(log_dir=run_dir)
+tensorboard_writer = SummaryWriter(log_dir=run_dir)
 
-    saved_checkpoints_queue = deque()
+saved_checkpoints_queue = deque()
 
-    ###############################################################################
-    # Load data
-    ###############################################################################
-    dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
-    train_dataset = WikiDataset(data_path=str(dataset_path), split="train")
-    val_dataset = WikiDataset(data_path=str(dataset_path), split="val")
+# try:
+###############################################################################
+# Load data
+###############################################################################
+dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
+train_dataset = WikiDataset(data_path=str(dataset_path), split="train")
+val_dataset = WikiDataset(data_path=str(dataset_path), split="val")
 
-    ###############################################################################
-    # Build the model
-    ###############################################################################
-    dtype = torch.float16 if args.trainer_args.fp16 else torch.float32
+###############################################################################
+# Build the model
+###############################################################################
 
-    ltm_model, tokenizer = load_ltm_model(args)
+ltm_model, tokenizer = load_ltm_model(args)
+memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=ltm_model.dtype)
 
-    memory_model_device = torch.device(args.memory_model_params.device)
-    memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=torch.float32).to(memory_model_device)
+###############################################################################
+# Create optimizers
+###############################################################################
 
-    ###############################################################################
-    # Create optimizers
-    ###############################################################################
+if args.trainer_args.optimizer.lower() == "sgd":
+    ltm_optimizer = torch.optim.SGD(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
+    rl_optimizer = torch.optim.SGD(
+        memory_model.parameters(),
+        lr=args.trainer_args.memory_model_learning_rate,
+    )
+elif args.trainer_args.optimizer.lower() == "adam":
+    ltm_optimizer = torch.optim.Adam(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
+    rl_optimizer = torch.optim.Adam(
+        memory_model.parameters(),
+        lr=args.trainer_args.memory_model_learning_rate,
+    )
+elif args.trainer_args.optimizer.lower() == "adamw":
+    ltm_optimizer = torch.optim.AdamW(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
+    rl_optimizer = torch.optim.AdamW(
+        memory_model.parameters(),
+        lr=args.trainer_args.memory_model_learning_rate,
+    )
 
-    if args.trainer_args.optimizer.lower() == "sgd":
-        ltm_optimizer = torch.optim.SGD(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
-        rl_optimizer = torch.optim.SGD(
-            memory_model.parameters(),
-            lr=args.trainer_args.memory_model_learning_rate,
-        )
-    elif args.trainer_args.optimizer.lower() == "adam":
-        ltm_optimizer = torch.optim.Adam(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
-        rl_optimizer = torch.optim.Adam(
-            memory_model.parameters(),
-            lr=args.trainer_args.memory_model_learning_rate,
-        )
-    elif args.trainer_args.optimizer.lower() == "adamw":
-        ltm_optimizer = torch.optim.AdamW(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
-        rl_optimizer = torch.optim.AdamW(
-            memory_model.parameters(),
-            lr=args.trainer_args.memory_model_learning_rate,
-        )
+###############################################################################
+# Train
+###############################################################################
 
-    ###############################################################################
-    # Train
-    ###############################################################################
+trainer = Trainer(ltm_model, ltm_optimizer, memory_model, rl_optimizer, args, train_dataset, val_dataset, tokenizer)
 
-    trainer = Trainer(ltm_model, ltm_optimizer, memory_model, rl_optimizer, args, train_dataset, val_dataset, tokenizer)
+try:
+    for epoch in itertools.count(start=1):  # epoch == traverse over train dataset once
+        trainer.train()
+        if epoch == args.trainer_args.num_train_epochs:
+            logger.info("-" * 100)
+            logger.info("End of training.")
+            break
+except KeyboardInterrupt:
+    logger.info("-" * 100)
+    logger.info("Exiting from training early")
 
-    try:
-        for epoch in itertools.count(start=1):  # epoch == traverse over train dataset once
-            trainer.train()
-            if epoch == args.trainer_args.num_train_epochs:
-                logger.info("-" * 100)
-                logger.info("End of training.")
-                break
-    except KeyboardInterrupt:
-        logger.info("-" * 100)
-        logger.info("Exiting from training early")
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except:
-        logger_process.kill()
+# except:
+#     logger_process.kill()

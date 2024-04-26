@@ -60,10 +60,13 @@ class EncoderBlock(nn.Module):
         self.n_head = n_head
         self.dtype = dtype
 
+        torch.set_default_dtype(self.dtype)
         self.ln_1 = nn.LayerNorm(d_embd)
         self.attn = nn.MultiheadAttention(d_embd, n_head, dropout, batch_first=True)
         self.ln_2 = nn.LayerNorm(d_embd)
         self.mlp = DenseNetwork(1, d_embd, d_hid, d_embd, dropout=dropout)
+
+        torch.set_default_dtype(torch.float32)
 
     def forward(self, x: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
         x = self.ln_1(x)

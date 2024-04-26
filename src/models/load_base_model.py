@@ -1,19 +1,19 @@
 from pathlib import Path
 
-import bitsandbytes as bnb
 import peft
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.utils.logger_singleton import logger
 
+# import bitsandbytes as bnb
 # from transformers.utils.quantization_config import BitsAndBytesConfig
 
 
 def load_base_model(main_config):
     logger.info("Loading base model...")
 
-    dtype = torch.float16 if main_config.trainer_args.fp16 else torch.float32
+    dtype = torch.float16 if main_config.trainer_args.torch_dtype == "float16" else torch.float32
     checkpoint_base_cache_dir = Path(main_config.checkpoint_base_cache_dir).resolve()
     # bnb = BitsAndBytesConfig(load_in_4bit=main_config.base_model_params.load_in_4bit, bnb_4bit_compute_dtype=dtype)
 
@@ -21,13 +21,19 @@ def load_base_model(main_config):
         main_config.pretrained_model_name_or_path,
         # quantization_config=bnb,
         cache_dir=checkpoint_base_cache_dir,
-        # device_map="auto",
+        torch_dtype=dtype,
+        device_map="auto",
         low_cpu_mem_usage=True,
-        offload_state_dict=True,
         tie_word_embeddings=False,
+        offload_state_dict=True,
     )
 
+    model.d_mem = main_config.memory_model_params.d_mem
+    model._dtype = dtype
+    model.step_length = main_config.trainer_args.step_length
+    model.add_lora = main_config.base_model_params.add_lora
     tokenizer = AutoTokenizer.from_pretrained(main_config.pretrained_model_name_or_path)
+    tokenizer.padding_side = "right"
 
     if main_config.base_model_params.add_lora:
         modules_to_add_lora = ["attn.c_attn", "attn.c_proj", "mlp.c_fc", "mlp.c_proj"]
@@ -46,13 +52,4 @@ def load_base_model(main_config):
     for param in model.parameters():
         param.requires_grad = False
 
-    # optimization
-    # model.gradient_checkpointing_enable()  # memory optimization: only store a small subset of activations, re-compute the rest.
-    # model.enable_input_require_grads()  # override an implementation quirk in gradient checkpoints that disables backprop unless inputs require grad
-
-    class CastOutputToFloat(torch.nn.Sequential):
-        def forward(self, x):
-            return super().forward(x).to(torch.float32)
-
-    model.lm_head = CastOutputToFloat(model.lm_head)  # cast model ouputs to unfuct the top-k sampler
     return model, tokenizer

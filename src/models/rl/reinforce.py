@@ -13,7 +13,7 @@ torch.autograd.set_detect_anomaly(True)
 # todo(jbelova): make class from distr
 
 
-def distr_to_device(distr: dict, device: torch.device, memory_type: str):
+def distr_to_device(distr: dict, device: torch.device, memory_type: str = "conservative"):
     probs = distr["pos_distr"].probs.to(device)
     loc = distr["normal_distr"].loc.to(device)
     scale = distr["normal_distr"].scale.to(device)
@@ -48,11 +48,12 @@ class REINFORCE:
         with torch.no_grad():
             state.to(self.device)
             action, proba, distr = self.agent.act(state=state)
-            state.to("cpu")
-
-        # todo: distr to cpu
+        state.to("cpu")
         action.to("cpu")
-        return action, proba.cpu(), distr_to_device(distr, torch.device("cpu"), memory_type="conservative")
+        # todo: distr to cpu
+        distr = distr_to_device(distr, torch.device("cpu"))
+
+        return (action, proba.cpu(), distr)
 
     def _get_distr_from_list(self, distr_batch: list[dict], ids: [int]) -> dict:
         selected_distributions = [distr_batch[i] for (i, _) in ids]

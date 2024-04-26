@@ -20,7 +20,7 @@ class MemoryModel(torch.nn.Module):
         d_embd: int,
         d_mem: int,
         num_vectors: int,
-        device: torch.device,
+        device: str,
         memory_type: str = "conservative",
         n_enc_block: int = 2,
         n_dec_block: int = 3,
@@ -44,19 +44,20 @@ class MemoryModel(torch.nn.Module):
         self.num_vectors = num_vectors
         self.memory_type = memory_type
         self.dtype = dtype
-        self.device = device
+        self.device = torch.device(device)
         self.encoder = Encoder(EncoderBlock(d_embd=d_embd, dtype=dtype), n_enc_block)
         self.decoder = Decoder(DecoderBlock(d_embd=d_embd, d_mem=d_mem, dtype=dtype), n_dec_block)
         self.action_sampler = ActionSampler(d_mem=d_mem, dtype=dtype, memory_type=memory_type)
+        self.to(self.device)
 
     def forward(self, state: State) -> tuple[torch.tensor, torch.tensor]:
         """
         :param state:
         :return: distribution parameters for positions and new memory
         """
-        embeddings, attention_mask = state.embeddings, state.attention_mask
+        embeddings, attention_mask, memory = state.embeddings, state.attention_mask, state.memory
         enc_out = self.encoder(embeddings, attention_mask)
-        dec_out = self.decoder(state.memory.to(embeddings.device), enc_out, attention_mask)
+        dec_out = self.decoder(memory, enc_out, attention_mask)
         action = self.action_sampler(dec_out)
         return action
 

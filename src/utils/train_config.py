@@ -31,6 +31,7 @@ class MemoryModelParams:
 
 @dataclass
 class RLParams:
+    num_prefixes_for_reward_calc: int
     batches_per_update: int
     batch_size: int
     min_transitions_per_update: int
@@ -53,7 +54,6 @@ class SyntheticTaskEnvParams:
 class TrainerArgs:
     warmup_steps: int
     gradient_accumulation_steps: int
-    fp16: bool
     step_length: int
     num_train_epochs: int
     ltm_model_iterations: int
@@ -63,6 +63,7 @@ class TrainerArgs:
     optimizer: str
     ltm_learning_rate: float
     memory_model_learning_rate: float
+    torch_dtype: str = "float32"
 
 
 @dataclass

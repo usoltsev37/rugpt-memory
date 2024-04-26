@@ -138,6 +138,8 @@ class Agent(nn.Module):
         :return: a tuple containing the selected action, the log probability of the action, and the distributions used
         for sampling the action.
         """
+        # Transfer State to self.device
+        state.to(self.device)
 
         # Sample distribution parameters for positions and memory vectors based on the current state
         positions_param, memory_vectors_param = self.model(state)
@@ -169,7 +171,9 @@ class Agent(nn.Module):
         :return: a tuple containing the log probability of the action, the entropy of the action's distribution,
         and the distributions used for calculating both metrics.
         """
+        state.to(self.device)
         action.to(self.device)
+
         positions_param, memory_vectors_param = self.model(state)
 
         pos_distr_cls = Categorical if self.memory_type == "conservative" else Bernoulli

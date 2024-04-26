@@ -30,13 +30,14 @@ class LTMGPT2Block(nn.Module):
             out_dim=self.embed_dim,
             dropout=dropout,
             initialize_with_zeros=False,
+            dtype=self.dtype,
         )
 
         self.attn = nn.MultiheadAttention(
-            embed_dim=self.embed_dim, num_heads=num_heads, dropout=dropout, batch_first=True
+            embed_dim=self.embed_dim, num_heads=num_heads, dropout=dropout, batch_first=True, dtype=self.dtype
         )
 
-        self.ln1 = nn.LayerNorm(self.embed_dim)
+        self.ln1 = nn.LayerNorm(self.embed_dim, dtype=self.dtype)
 
         self.dense_network2 = DenseNetwork(
             n_hid_layers=0,
@@ -45,9 +46,10 @@ class LTMGPT2Block(nn.Module):
             out_dim=self.embed_dim,
             dropout=dropout,
             initialize_with_zeros=True,
+            dtype=self.dtype,
         )
 
-        self.ln2 = nn.LayerNorm(self.embed_dim)
+        self.ln2 = nn.LayerNorm(self.embed_dim, dtype=self.dtype)
 
     def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor, memory: torch.Tensor) -> torch.Tensor:
         attention_mask = attention_mask[:, None, None, :]

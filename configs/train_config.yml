@@ -24,7 +24,7 @@ memory_model_params:
 trainer_args:
   warmup_steps: 0
   gradient_accumulation_steps: 1
-  fp16: True
+  torch_dtype: float32
   num_train_epochs: 1
   ltm_model_iterations: 3
   memory_model_iterations: 3
@@ -36,6 +36,7 @@ trainer_args:
   step_length: 512
 
 rl_params:
+  num_prefixes_for_reward_calc: 3
   batches_per_update: 5
   batch_size: 4
   min_transitions_per_update: 32

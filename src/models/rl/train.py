@@ -1,10 +1,7 @@
 import torch
-from torch.distributions import Bernoulli, Categorical, Normal
-from torch.utils.tensorboard import SummaryWriter
 
-import wandb
 from src.models.ltm_gpt.ltm_gpt import LTM_GPT
-from src.models.rl.agent import Agent
+from src.models.rl.reinforce import Agent
 from src.models.rl.envs import LTMEnvironment
 from src.models.rl.reinforce import REINFORCE
 from src.utils.train_config import RLParams, TrainingArguments
@@ -35,9 +32,9 @@ def compute_rewards(trajectory: list[list], gamma: float):
     ]
 
 
-def sample_episodes(env: LTMEnvironment, agent: REINFORCE, data: dict, train_config: RLParams) -> [tuple]:
+def sample_episodes(env: LTMEnvironment, reinforce: REINFORCE, data: dict, train_config: RLParams) -> [tuple]:
     """
-    Samples an episode of interaction between an agent and an environment,
+    Samples an episode of interaction between an reinforce and an environment,
     then computes and returns the discounted rewards for each step in the episode.
     """
     state = env.reset(data)
@@ -46,8 +43,8 @@ def sample_episodes(env: LTMEnvironment, agent: REINFORCE, data: dict, train_con
 
     with torch.no_grad():
         while not done:
-            action, log_proba, distr = agent.act(state)
-            next_state, reward, done = env.step(action)
+            action, log_proba, distr = reinforce.act(state)  # cpu
+            next_state, reward, done = env.step(action)  # cpu
             if trajectories:
                 trajectories[-1][2] = reward  # Reward from the step (i+1) is a true reward for step (i)
             trajectories.append([state, action, reward, log_proba, distr])
@@ -57,12 +54,17 @@ def sample_episodes(env: LTMEnvironment, agent: REINFORCE, data: dict, train_con
 
 
 def train_rl(
-    data: list[dict], agent: Agent, optimizer: torch.optim, ltm_model: LTM_GPT, train_config: TrainingArguments
+    data: list[dict],
+    agent: Agent,
+    optimizer: torch.optim,
+    ltm_model: LTM_GPT,
+    memory_module,
+    train_config: TrainingArguments,
 ):
     """
     Training a memory model using reinforcement learning with a fixed LTM model.
     :param data: Training data from EpochDataloader
-    :param agent: Agent with MemoryModel
+    :param reinforce: Agent with MemoryModel
     :param ltm_model: LTM model with frozen weights
     :param train_config: config with training parameters of the REINFORCE algorithm
     """
@@ -70,8 +72,11 @@ def train_rl(
         return None
 
     agent.model.eval()
-    dtype = torch.float16 if train_config.trainer_args.fp16 else torch.float32
-    env = LTMEnvironment(ltm_model, agent.num_vectors, agent.d_mem, dtype=dtype)
+    env = LTMEnvironment(
+        ltm_model,
+        memory_module,
+        num_prefixes_for_reward_calc=train_config.rl_params.num_prefixes_for_reward_calc,
+    )
     reinforce = REINFORCE(agent, optimizer, train_config=train_config.rl_params)
 
     transitions = []
