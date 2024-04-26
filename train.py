@@ -18,7 +18,6 @@ from src.utils.logger_singleton import ColourFormatter
 import subprocess
 
 from tqdm.auto import tqdm
-from accelerate import Accelerator
 from transformers.trainer_pt_utils import get_model_param_count
 from transformers.trainer_utils import set_seed
 
@@ -61,10 +60,9 @@ class Trainer:
         tokenizer,
     ):
         self.args = args
-        self.accelerator = Accelerator()
-        self.ltm_model, self.ltm_optimizer = self.accelerator.prepare(ltm_model, ltm_optimizer)
+        self.ltm_model, self.ltm_optimizer = ltm_model, ltm_optimizer
 
-        self.memory_model, self.memory_model_optimizer = self.accelerator.prepare(memory_model, memory_model_optimizer)
+        self.memory_model, self.memory_model_optimizer = memory_model, memory_model_optimizer
 
         self.agent = Agent(self.memory_model)
         self.memory_module = MemoryModule(
@@ -77,8 +75,8 @@ class Trainer:
         self.eval_dataset = eval_dataset
         self.tokenizer = tokenizer
 
-        self.eval_dataloader = self.accelerator.prepare(self.get_eval_dataloader())
-        self.train_dataloader = self.accelerator.prepare(self.get_train_dataloader())
+        self.eval_dataloader = self.get_eval_dataloader()
+        self.train_dataloader = self.get_train_dataloader()
 
     def get_eval_dataloader(self):
         return EpochDataloader(
@@ -130,7 +128,6 @@ class Trainer:
             # Get new memory vectors and update memory
             with torch.no_grad():
                 action, _, _ = self.agent.act(state)
-                # action = action.to(torch.device("cpu"))
 
             # Update memory
             self.memory_module.update(action)
@@ -140,6 +137,7 @@ class Trainer:
     def evaluate(self):
         self.ltm_model.freeze()
         self.memory_model.freeze()
+        torch.cuda.empty_cache()
 
         it, total_loss = 0, 0.0
         with torch.no_grad():
@@ -205,21 +203,11 @@ class Trainer:
                 data["input_ids"][:, step, :].contiguous(),
                 data["attention_mask"][:, step, :].contiguous(),
             )
-
+            input_ids = input_ids.to(self.ltm_model.first_device)
+            attention_mask = attention_mask.to(self.ltm_model.first_device)
             loss, high_level_embeddings = self.ltm_model(input_ids, attention_mask, self.memory_module.memory)
 
-            # # Get high-level embeddings from LLM
-            # high_level_embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
-
-            # # Compute loss and update
-            # loss = self.ltm_model.get_output(
-            #     high_level_embeddings,
-            #     input_ids,
-            #     attention_mask,
-            #     self.memory_module.memory,
-            # )
-
-            self.accelerator.backward(loss)
+            loss.backward()
             self.ltm_optimizer.step()
             self.ltm_optimizer.zero_grad()
 
@@ -235,7 +223,6 @@ class Trainer:
             # Get new memory vectors and update memory
             with torch.no_grad():
                 action, _, _ = self.agent.act(state)
-                # action = action.to(torch.device("cpu"))
 
             # Update memory
             self.memory_module.update(action)
@@ -293,7 +280,6 @@ class Trainer:
                         self.memory_model_optimizer,
                         self.ltm_model,
                         self.args,
-                        self.accelerator,
                     )
 
                     memory_iteration_count += 1
@@ -339,8 +325,17 @@ def init_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def setup_logger_process():
+    global run_dir
+    log_dir = run_dir / "logs.log"
+    file_handler = logging.FileHandler(log_dir)
+    file_handler.setFormatter(ColourFormatter())
+    logger.addHandler(file_handler)
+    return subprocess.Popen(["python3", "log_mem_usage.py", log_dir])
+
+
 def main():
-    global tensorboard_writer, saved_checkpoints_queue, run_dir
+    global tensorboard_writer, saved_checkpoints_queue, run_dir, logger_process
     ###############################################################################
     # Parse arguments and create directories
     ###############################################################################
@@ -349,13 +344,11 @@ def main():
     set_seed(args.seed)
 
     run_dir = Path(args.checkpoint_dir) / args.experiment_name / "runs"
-    tensorboard_writer = SummaryWriter(log_dir=run_dir)
 
-    log_dir = run_dir / "logs.log"
-    file_handler = logging.FileHandler(log_dir)
-    file_handler.setFormatter(ColourFormatter())
-    logger.addHandler(file_handler)
-    subprocess.Popen(["python3", "log_mem_usage.py", log_dir])
+    # PROCESS WILL CLOSE AFTER MAIN COMPLETION
+    logger_process = setup_logger_process()
+
+    tensorboard_writer = SummaryWriter(log_dir=run_dir)
 
     saved_checkpoints_queue = deque()
 
@@ -374,7 +367,7 @@ def main():
     ltm_model, tokenizer = load_ltm_model(args)
 
     memory_model_device = torch.device(args.memory_model_params.device)
-    memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=torch.float32)
+    memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=torch.float32).to(memory_model_device)
 
     ###############################################################################
     # Create optimizers
@@ -418,4 +411,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except:
+        logger_process.kill()

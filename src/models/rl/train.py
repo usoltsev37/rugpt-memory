@@ -10,16 +10,6 @@ from src.models.rl.reinforce import REINFORCE
 from src.utils.train_config import RLParams, TrainingArguments
 
 
-def distr_to_device(distr: dict, device: torch.device, memory_type: str):
-    probs = distr["pos_distr"].probs.to(device)
-    loc = distr["normal_distr"].loc.to(device)
-    scale = distr["normal_distr"].scale.to(device)
-    pos_distr_cls = Categorical if memory_type == "conservative" else Bernoulli
-    pos_distr = pos_distr_cls(probs)
-    normal_distr = Normal(loc, scale)
-    return {"pos_distr": pos_distr, "normal_distr": normal_distr}
-
-
 def compute_rewards(trajectory: list[list], gamma: float):
     """
     Computes the discounted reward for each step in a given trajectory.
@@ -57,7 +47,6 @@ def sample_episodes(env: LTMEnvironment, agent: REINFORCE, data: dict, train_con
     with torch.no_grad():
         while not done:
             action, log_proba, distr = agent.act(state)
-            distr = distr_to_device(distr, torch.device("cpu"), agent.agent.memory_type)
             next_state, reward, done = env.step(action)
             if trajectories:
                 trajectories[-1][2] = reward  # Reward from the step (i+1) is a true reward for step (i)
@@ -68,12 +57,7 @@ def sample_episodes(env: LTMEnvironment, agent: REINFORCE, data: dict, train_con
 
 
 def train_rl(
-    data: list[dict],
-    agent: Agent,
-    optimizer: torch.optim,
-    ltm_model: LTM_GPT,
-    train_config: TrainingArguments,
-    accelerator,
+    data: list[dict], agent: Agent, optimizer: torch.optim, ltm_model: LTM_GPT, train_config: TrainingArguments
 ):
     """
     Training a memory model using reinforcement learning with a fixed LTM model.
@@ -97,7 +81,7 @@ def train_rl(
         transitions.extend(batch_traj)
 
     agent.model.train()
-    mean_loss = reinforce.update(transitions, accelerator)
+    mean_loss = reinforce.update(transitions)
     # tensorboard_writer.add_scalar("Loss/memory_model_train_iteration_loss", mean_loss)
 
     return mean_loss

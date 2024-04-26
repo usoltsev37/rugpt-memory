@@ -10,6 +10,18 @@ from src.utils.train_config import RLParams
 
 torch.autograd.set_detect_anomaly(True)
 
+# todo(jbelova): make class from distr
+
+
+def distr_to_device(distr: dict, device: torch.device, memory_type: str):
+    probs = distr["pos_distr"].probs.to(device)
+    loc = distr["normal_distr"].loc.to(device)
+    scale = distr["normal_distr"].scale.to(device)
+    pos_distr_cls = Categorical if memory_type == "conservative" else Bernoulli
+    pos_distr = pos_distr_cls(probs)
+    normal_distr = Normal(loc, scale)
+    return {"pos_distr": pos_distr, "normal_distr": normal_distr}
+
 
 class REINFORCE:
     def __init__(self, agent: Agent, optimizer: torch.optim, train_config: RLParams):
@@ -34,10 +46,13 @@ class REINFORCE:
         :return: the action taken, the probability of the action, and the distributions used for sampling the action.
         """
         with torch.no_grad():
-            action, proba, distr = self.agent.act(state)
+            state.to(self.device)
+            action, proba, distr = self.agent.act(state=state)
+            state.to("cpu")
 
         # todo: distr to cpu
-        return action.to(torch.device("cpu")), proba.cpu(), distr
+        action.to("cpu")
+        return action, proba.cpu(), distr_to_device(distr, torch.device("cpu"), memory_type="conservative")
 
     def _get_distr_from_list(self, distr_batch: list[dict], ids: [int]) -> dict:
         selected_distributions = [distr_batch[i] for (i, _) in ids]
@@ -68,7 +83,7 @@ class REINFORCE:
         memory_vectors = torch.stack([a.memory_vectors[j] for a, (_, j) in zip(selected_actions, ids)])
         return Action(positions.detach(), memory_vectors.detach())
 
-    def update(self, transitions: list[list], accelerator) -> float | None:
+    def update(self, transitions: list[list]) -> float | None:
         """
         Updates the agent's policy based on collected transitions.
 
@@ -85,8 +100,8 @@ class REINFORCE:
 
             state_batch = self.select_state_batch(state, ids)
             action_batch = self.select_action_batch(action, ids)
-            reward_batch = torch.stack([reward[i][j] for (i, j) in ids]).detach()
-            old_proba_batch = torch.stack([old_proba[i][j] for (i, j) in ids]).detach()
+            reward_batch = torch.stack([reward[i][j] for (i, j) in ids]).detach().to(self.device)
+            old_proba_batch = torch.stack([old_proba[i][j] for (i, j) in ids]).detach().to(self.device)
             old_distr_batch = self._get_distr_from_list(old_distr, ids)
 
             cur_proba, entropy, distr = self.agent.compute_logproba_and_entropy(state_batch, action_batch)
@@ -107,7 +122,7 @@ class REINFORCE:
 
             loss -= self.entropy_coef * entropy
             loss = loss.mean()
-            accelerator.backward(loss)
+            loss.backward()
 
             nn.utils.clip_grad_norm_(self.agent.parameters(), self.clip_grad_norm)
             self.optim.step()

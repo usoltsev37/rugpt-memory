@@ -3,8 +3,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch.distributions import Bernoulli, Categorical, Normal
 
-from src.models.memory_model.memory_model import (MemoryModel,
-                                                  SyntheticTaskModel)
+from src.models.memory_model.memory_model import MemoryModel, SyntheticTaskModel
 from src.models.rl.envs import Action, State
 
 
@@ -22,9 +21,9 @@ class Agent(nn.Module):
         self.memory_type = memory_model.memory_type
         self.device = next(self.model.parameters()).device
 
-    def _compute_log_probability(self, pos_distr: Categorical | Bernoulli,
-                                 log_probability_normal_distr: torch.Tensor,
-                                 positions: torch.Tensor) -> torch.Tensor:
+    def _compute_log_probability(
+        self, pos_distr: Categorical | Bernoulli, log_probability_normal_distr: torch.Tensor, positions: torch.Tensor
+    ) -> torch.Tensor:
         """
         Calculates the logarithm of the probability of selecting specific memory positions and associated memory
         vector updates.
@@ -49,8 +48,7 @@ class Agent(nn.Module):
         else:
             raise ValueError(f"Unsupported memory_type: {self.memory_type}")
 
-    def _compute_entropy(self, pos_distr: Categorical | Bernoulli,
-                         normal_distr: Normal) -> torch.Tensor:
+    def _compute_entropy(self, pos_distr: Categorical | Bernoulli, normal_distr: Normal) -> torch.Tensor:
         """
         Calculates the entropy of the action distribution, which includes both the position and memory vector updates.
 
@@ -68,8 +66,9 @@ class Agent(nn.Module):
         else:
             raise ValueError(f"Unsupported memory_type: {self.memory_type}")
 
-    def compute_kld_between_normal_distributions(self, old_policy_distr: Normal,
-                                                 cur_policy_distr: Normal) -> torch.Tensor:
+    def compute_kld_between_normal_distributions(
+        self, old_policy_distr: Normal, cur_policy_distr: Normal
+    ) -> torch.Tensor:
         """
         Computes the Kullback-Leibler divergence between two normal distributions.
 
@@ -104,20 +103,21 @@ class Agent(nn.Module):
         'normal_distr' for distributions.
         :param cur_policy: a dictionary representing the current policy, similar structure to `old_policy`.
         """
-        old_policy_entropy = self._compute_entropy(old_policy["pos_distr"],
-                                                   old_policy["normal_distr"])
+        old_policy_entropy = self._compute_entropy(old_policy["pos_distr"], old_policy["normal_distr"])
 
         if self.memory_type == "conservative":
             kld_between_normal_distr = self.compute_kld_between_normal_distributions(
-                old_policy["normal_distr"],
-                cur_policy["normal_distr"])
+                old_policy["normal_distr"], cur_policy["normal_distr"]
+            )
 
             cross_entropy_component_1 = -torch.sum(
-                old_policy["pos_distr"].probs * cur_policy["pos_distr"].logits,
-                dim=-1)
+                old_policy["pos_distr"].probs * cur_policy["pos_distr"].logits, dim=-1
+            )
             cross_entropy_component_2 = torch.sum(
-                old_policy["pos_distr"].probs * (
-                        kld_between_normal_distr + old_policy["normal_distr"].entropy().sum(-1)), dim=-1)
+                old_policy["pos_distr"].probs
+                * (kld_between_normal_distr + old_policy["normal_distr"].entropy().sum(-1)),
+                dim=-1,
+            )
 
             cross_entropy = cross_entropy_component_1 + cross_entropy_component_2
             kld = -old_policy_entropy + cross_entropy
@@ -154,16 +154,12 @@ class Agent(nn.Module):
         memory_vectors = normal_distr.sample()
 
         # Construct the action and calculate log probabilities
-        action = Action(positions, memory_vectors)
+        action = Action(positions, memory_vectors, device=self.device)
         log_proba_normal_distr = normal_distr.log_prob(action.memory_vectors).sum(-1)
-        distributions = {"pos_distr": pos_distr,
-                         "normal_distr": normal_distr}
-        return action, self._compute_log_probability(pos_distr, log_proba_normal_distr,
-                                                     positions), distributions
+        distributions = {"pos_distr": pos_distr, "normal_distr": normal_distr}
+        return action, self._compute_log_probability(pos_distr, log_proba_normal_distr, positions), distributions
 
-    def compute_logproba_and_entropy(self,
-                                     state: State,
-                                     action: Action) -> tuple[torch.Tensor, torch.Tensor, dict]:
+    def compute_logproba_and_entropy(self, state: State, action: Action) -> tuple[torch.Tensor, torch.Tensor, dict]:
         """
         Computes the log probability of an action according to the current policy and the entropy of the action's
         distribution.
@@ -173,7 +169,7 @@ class Agent(nn.Module):
         :return: a tuple containing the log probability of the action, the entropy of the action's distribution,
         and the distributions used for calculating both metrics.
         """
-
+        action.to(self.device)
         positions_param, memory_vectors_param = self.model(state)
 
         pos_distr_cls = Categorical if self.memory_type == "conservative" else Bernoulli
@@ -184,10 +180,8 @@ class Agent(nn.Module):
         normal_distr = Normal(mu, sigma)
         log_proba_normal_distr = normal_distr.log_prob(action.memory_vectors).sum(-1)
 
-        distributions = {"pos_distr": pos_distr,
-                         "normal_distr": normal_distr}
+        distributions = {"pos_distr": pos_distr, "normal_distr": normal_distr}
 
-        log_proba = self._compute_log_probability(pos_distr, log_proba_normal_distr,
-                                                  action.positions)
+        log_proba = self._compute_log_probability(pos_distr, log_proba_normal_distr, action.positions)
         entropy = self._compute_entropy(pos_distr, normal_distr)
         return log_proba, entropy, distributions

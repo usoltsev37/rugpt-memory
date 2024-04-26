@@ -66,11 +66,12 @@ class LTMEnvironment:
             embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
 
         self.embeddings = embeddings
+
         self.memory_module.reset(bs)
 
         return State(
             self.memory_module.memory,
-            self.embeddings,
+            embeddings.cpu(),
             attention_mask,
         )
 
@@ -81,7 +82,7 @@ class LTMEnvironment:
             self.embeddings,
             self.input_ids,
             self.attention_mask,
-            self.memory_module.memory.to(self.embeddings.device),
+            self.memory_module.memory,
             reward_for_agent=True,
         )
 
@@ -126,16 +127,12 @@ class LTMEnvironment:
             )
 
             self.input_ids = input_ids
-            self.embeddings = embeddings.cpu()
+            self.embeddings = embeddings
             self.attention_mask = attention_mask
 
         return (
-            State(
-                new_memory,
-                self.embeddings,
-                self.attention_mask,
-            ),
-            reward,
+            State(new_memory, self.embeddings, self.attention_mask, device=torch.device("cpu")),
+            reward.cpu(),
             done,
         )
 
