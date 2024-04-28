@@ -23,6 +23,7 @@ from transformers.trainer_pt_utils import get_model_param_count
 from transformers.trainer_utils import set_seed
 
 from transformers.utils import logging as tr_logging
+import pickle
 
 tr_logging.set_verbosity_error()
 
@@ -91,7 +92,7 @@ class Trainer:
             max_sequence_len_in_batch=self.args.trainer_args.step_length * 100,
             batch_size=self.args.trainer_args.batch_size,
             shuffle=False,
-            num_workers=2,
+            # num_workers=2,
             pin_memory=True,
         )
 
@@ -103,7 +104,7 @@ class Trainer:
             max_sequence_len_in_batch=self.args.trainer_args.step_length * 100,
             batch_size=self.args.trainer_args.batch_size,
             shuffle=True,
-            num_workers=2,
+            # num_workers=2,
             pin_memory=True,
         )
 
@@ -137,12 +138,12 @@ class Trainer:
             # Update memory
             self.memory_module.update(action)
 
-            return episode_loss / num_steps
+        return episode_loss / num_steps
 
     def evaluate(self):
         self.ltm_model.freeze()
         self.memory_model.freeze()
-        # torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
 
         it, total_loss = 0, 0.0
         with torch.no_grad():
@@ -155,27 +156,33 @@ class Trainer:
 
         return total_loss / it
 
-    def save_models(self, output_dir):
+    def save_models(self, output_dir: Path) -> None:
         logger.info(f"Saving models checkpoints to {output_dir}")
-        torch.save(
-            {
-                "cycle": self.cycle,
-                "batch_step": self.batch_step,
-                "model_parameters": self.ltm_model.state_dict(),
-                "optimizer_state_dict": self.ltm_optimizer.state_dict(),
-            },
-            f"{output_dir / 'ltm'}.pt",
-        )
 
-        torch.save(
-            {
-                "cycle": self.cycle,
-                "batch_step": self.batch_step,
-                "model_parameters": self.memory_model.state_dict(),
-                "optimizer_state_dict": self.memory_model_optimizer.state_dict(),
-            },
-            f"{output_dir / 'memory_model'}.pt",
-        )
+        ltm_state_dict = {k: v.cpu() for k, v in self.ltm_model.state_dict().items()}
+        memory_model_state_dict = {k: v.cpu() for k, v in self.memory_model.state_dict().items()}
+
+        with open(str(output_dir / "ltm.pkl"), "wb") as f:
+            pickle.dump(
+                {
+                    "cycle": self.cycle,
+                    "batch_step": self.batch_step,
+                    "model_parameters": ltm_state_dict,
+                    "optimizer_state_dict": self.ltm_optimizer.state_dict(),
+                },
+                f,
+            )
+
+        with open(str(output_dir / "memory_model.pkl"), "wb") as f:
+            pickle.dump(
+                {
+                    "cycle": self.cycle,
+                    "batch_step": self.batch_step,
+                    "model_parameters": memory_model_state_dict,
+                    "optimizer_state_dict": self.memory_model_optimizer.state_dict(),
+                },
+                f,
+            )
 
     def save_checkpoint(self):
         global run_dir
@@ -256,15 +263,6 @@ class Trainer:
         ltm_loss, memory_model_loss = 0.0, 0.0
         batch_buffer, num_transitions_in_buffer = [], 0
 
-        # self.model = nn.Sequential(nn.Linear(10000, 10), nn.Linear(10, 500))
-
-        # batch_buffer, num_transitions_in_buffer = [], 0
-        # for _ in tqdm(range(10000), total=10000):
-        #     self.cycle += 1
-        #     self.save_checkpoint()
-
-        # return
-
         for batch in tqdm(self.train_dataloader, total=len(self.train_dataloader)):
             if is_ltm_training:
                 ltm_loss += self.train_ltm_on_episode(batch)
@@ -291,18 +289,13 @@ class Trainer:
                         self.memory_module,
                         self.args,
                     )
-                    import time
 
-                    time.sleep(30)
                     memory_iteration_count += 1
                     batch_buffer, num_transitions_in_buffer = [], 0
 
                     if memory_iteration_count >= memory_model_iterations:
                         memory_iteration_count = 0
                         is_ltm_training = True
-
-                        p = next(self.memory_model.parameters())
-                        logger.info(f"Memory Model weights before first cycle: {p}")
 
                         # Logging and validation after cycle
                         self.cycle += 1
@@ -358,8 +351,11 @@ args = load_config(args.config)
 set_seed(args.seed)
 
 run_dir = Path(args.checkpoint_dir) / args.experiment_name / "runs"
+if not os.path.exists(run_dir):
+    os.makedirs(run_dir)
 log_dir = run_dir / "logs.log"
-file_handler = logging.FileHandler(log_dir)
+
+file_handler = logging.FileHandler(str(log_dir))
 file_handler.setFormatter(ColourFormatter())
 logger.addHandler(file_handler)
 
