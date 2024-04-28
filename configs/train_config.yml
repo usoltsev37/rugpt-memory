@@ -1,10 +1,10 @@
-experiment_name: num_workers
+experiment_name: increase_n_iterations
 seed: 42
 content_dir: '.'
 pretrained_model_name_or_path: ai-forever/rugpt3small_based_on_gpt2
 checkpoint_dir: /media/public/ybelova/rugpt-memory/checkpoints
 checkpoint_base_cache_dir: /home/ybelova/repos/rugpt-memory/checkpoints/base/huggingface
-checkpoint_interval: 1
+checkpoint_interval: 5
 max_eval_steps: 32
 max_checkpoints: 5
 
@@ -26,20 +26,20 @@ trainer_args:
   gradient_accumulation_steps: 1
   torch_dtype: float32
   num_train_epochs: 1
-  ltm_model_iterations: 3
-  memory_model_iterations: 3
+  ltm_model_iterations: 50
+  memory_model_iterations: 50
   batch_size: 4
   cut_by_shortest_article: True
   optimizer: adamw
-  ltm_learning_rate: 2e-5
-  memory_model_learning_rate: 2e-5
-  step_length: 512
+  ltm_learning_rate: 3e-5
+  memory_model_learning_rate: 3e-5
+  step_length: 256
 
 rl_params:
   num_prefixes_for_reward_calc: 3
-  batches_per_update: 5
+  batches_per_update: 8
   batch_size: 4
-  min_transitions_per_update: 32
+  min_transitions_per_update: 64
 
 ltm_params:
   device: cuda:1
