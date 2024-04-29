@@ -48,7 +48,6 @@ faulthandler.enable()
 
 
 def create_dir_with_name(base_dir: str, name: str):
-
     # Construct the directory path
     dir = os.path.join(base_dir, name)
 
@@ -72,17 +71,18 @@ def _crop_batch(input_ids: torch.Tensor, attention_mask: torch.Tensor) -> tuple[
 
 class Trainer:
     def __init__(
-        self,
-        ltm_model: LTM_GPT,
-        ltm_optimizer,
-        memory_model: MemoryModel,
-        memory_model_optimizer,
-        args,
-        train_dataset,
-        eval_dataset,
-        tokenizer,
+            self,
+            ltm_model: LTM_GPT,
+            ltm_optimizer,
+            memory_model: MemoryModel,
+            memory_model_optimizer,
+            args,
+            train_dataset,
+            eval_dataset,
+            tokenizer,
     ):
         self.args = args
+        assert self.args.max_eval_steps > 0
         self.ltm_model, self.ltm_optimizer = ltm_model, ltm_optimizer
 
         self.memory_model, self.memory_model_optimizer = memory_model, memory_model_optimizer
@@ -100,6 +100,9 @@ class Trainer:
 
         self.eval_dataloader = self.get_eval_dataloader()
         self.train_dataloader = self.get_train_dataloader()
+
+        self.cycle = 0
+        self.batch_step = 0
 
     def load_checkpoint(self, checkpoint_path: str):
 
@@ -183,7 +186,7 @@ class Trainer:
         it, total_loss = 0, 0.0
         with torch.no_grad():
             for i, batch in enumerate(self.eval_dataloader):
-                if 0 < self.args.max_eval_steps <= i:
+                if self.args.max_eval_steps <= i:
                     break
                 loss = self._evaluate(batch)
                 total_loss += loss
@@ -194,6 +197,7 @@ class Trainer:
     def save_models(self, output_dir: Path) -> None:
         logger.info(f"Saving models checkpoints to {output_dir}")
 
+        # todo([minor]jbelova): what is k and v? add proper naming
         ltm_state_dict = {k: v.cpu() for k, v in self.ltm_model.state_dict().items()}
         memory_model_state_dict = {k: v.cpu() for k, v in self.memory_model.state_dict().items()}
 
@@ -204,6 +208,7 @@ class Trainer:
                     "batch_step": self.batch_step,
                     "model_parameters": ltm_state_dict,
                     "optimizer_state_dict": self.ltm_optimizer.state_dict(),
+                    # todo([minor]jbelova): figure out how to move optimizer to cpu (to satisfy paranoia)
                 },
                 f,
             )
@@ -215,6 +220,7 @@ class Trainer:
                     "batch_step": self.batch_step,
                     "model_parameters": memory_model_state_dict,
                     "optimizer_state_dict": self.memory_model_optimizer.state_dict(),
+                    # todo([minor]jbelova): figure out how to move optimizer to cpu (to satisfy paranoia)
                 },
                 f,
             )
@@ -273,9 +279,7 @@ class Trainer:
 
         return episode_loss / num_steps
 
-    def train(self, train_from_checkpoint: bool = False):
-        global epoch
-
+    def train(self, epoch: int, train_from_checkpoint: bool = False):
         logger.info("Starting the training process...")
         logger.info(
             f"Number of trainable parameters (LTM) = {get_model_param_count(self.ltm_model, trainable_only=True)}"
@@ -430,6 +434,7 @@ memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=ltm_model.d
 ###############################################################################
 # Create optimizers
 ###############################################################################
+ltm_optimizer, rl_optimizer = None, None
 
 if args.trainer_args.optimizer.lower() == "sgd":
     ltm_optimizer = torch.optim.SGD(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
@@ -458,7 +463,7 @@ trainer = Trainer(ltm_model, ltm_optimizer, memory_model, rl_optimizer, args, tr
 
 try:
     for epoch in itertools.count(start=1):  # epoch == traverse over train dataset once
-        trainer.train()
+        trainer.train(epoch)
         if epoch == args.trainer_args.num_train_epochs:
             logger.info("-" * 100)
             logger.info("End of training.")

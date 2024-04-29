@@ -1,4 +1,5 @@
 import copy
+import itertools
 
 import torch
 from torch import nn
@@ -20,11 +21,11 @@ class LTM_GPT(nn.Module):
     ) -> None:
         super().__init__()
 
+        self.ignore_index = ignore_index
         self.labels = None
         self.dtype = model_._dtype
         self.step_length = model_.step_length
         self.add_lora = model_.add_lora
-        self.ignore_index = ignore_index
         self.transformer = model_.transformer
         self.transformer_ltm_blocks = nn.ModuleList(
             [
@@ -42,14 +43,10 @@ class LTM_GPT(nn.Module):
         self.second_device = device
 
     def convert_tensor_to_first_device(self, tensor: torch.Tensor) -> torch.Tensor:
-        if tensor.device != self.first_device:
-            tensor = tensor.to(self.first_device)
-        return tensor
+        return tensor.to(self.first_device)
 
     def convert_tensor_to_second_device(self, tensor: torch.Tensor) -> torch.Tensor:
-        if tensor.device != self.second_device:
-            tensor = tensor.to(self.second_device)
-        return tensor
+        return tensor.to(self.second_device)
 
     def get_embeddings(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         input_ids = self.convert_tensor_to_first_device(input_ids)
@@ -96,26 +93,23 @@ class LTM_GPT(nn.Module):
 
     def freeze(self) -> None:
         self.eval()
-        for p in self.transformer.ln_f.parameters():
-            p.requires_grad = False
-
-        for p in self.lm_head.parameters():
-            p.requires_grad = False
-
-        for p in self.transformer_ltm_blocks.parameters():
+        for p in itertools.chain(self.transformer.ln_f.parameters(),
+                                 self.lm_head.parameters(),
+                                 self.transformer_ltm_blocks.parameters()):
             p.requires_grad = False
 
     def unfreeze(self) -> None:
         self.train()
-        for p in self.transformer.ln_f.parameters():
-            p.requires_grad = True
-
-        for p in self.lm_head.parameters():
+        for p in itertools.chain(self.transformer.ln_f.parameters(), self.lm_head.parameters()):
             p.requires_grad = True
 
         for n, p in self.transformer_ltm_blocks.named_parameters():
-            if self.add_lora:
-                if "base_layer" not in n:
-                    p.requires_grad = True
-            else:
+            if (not self.add_lora) or ("base_layer" not in n):
                 p.requires_grad = True
+
+            # todo([minor]jbelova) check if code upper is the same as commented lower
+            # if self.add_lora:
+            #     if "base_layer" not in n:
+            #         p.requires_grad = True
+            # else:
+            #     p.requires_grad = True

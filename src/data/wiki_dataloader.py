@@ -23,21 +23,21 @@ class EpochDataloader(DataLoader):
         shuffle: bool = False,
         **kwargs
     ):
+        super().__init__(dataset, batch_size, shuffle, collate_fn=self._collate_fn, **kwargs)
         self.iterator = None
         self.tokenizer = tokenizer
         self.model_max_length = model_max_length
         self.max_sequence_len_in_batch = max_sequence_len_in_batch
-        super().__init__(dataset, batch_size, shuffle, collate_fn=self._collate_fn, **kwargs)
 
     def _collate_fn(self, batch: [str]) -> dict:
         tokenized_batch = self.tokenizer(batch, return_tensors="pt", padding=True)
         shortest_article_len = tokenized_batch["attention_mask"].sum(dim=-1).min()
-        
+
         tokenized_batch["input_ids"] = tokenized_batch["input_ids"][:, :shortest_article_len]
         tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"][:, :shortest_article_len]
-        
+
         add_tokens_num = (self.model_max_length - shortest_article_len) % self.model_max_length
-         
+
         if add_tokens_num:
             if self.model_max_length - add_tokens_num == 1:
                 tokenized_batch["input_ids"] = tokenized_batch["input_ids"][:, :-1]

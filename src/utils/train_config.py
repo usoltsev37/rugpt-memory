@@ -71,6 +71,7 @@ class TrainingArguments:
     experiment_name: str
     seed: int
     content_dir: str
+    log_dir: str
     pretrained_model_name_or_path: str
     checkpoint_base_cache_dir: str
     checkpoint_dir: str
