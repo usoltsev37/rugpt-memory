@@ -1,33 +1,33 @@
 import argparse
+import datetime
 import itertools
 import logging
 import os
+import pickle
 import random
-from dataclasses import asdict
-from pathlib import Path
-import torch
-import torch.nn as nn
-import torch.optim
-from collections import deque
 import shutil
-import copy
-
-
-from src.utils.logger_singleton import ColourFormatter
+import socket
 
 # torch.autograd.set_detect_anomaly(True)
 import subprocess
+from collections import deque
+from dataclasses import asdict
+from pathlib import Path
 
+import torch
+import torch.nn as nn
+import torch.optim
 from tqdm.auto import tqdm
 from transformers.trainer_pt_utils import get_model_param_count
 from transformers.trainer_utils import set_seed
-
 from transformers.utils import logging as tr_logging
-import pickle
+
+from src.utils.logger_singleton import ColourFormatter
 
 tr_logging.set_verbosity_error()
 
 from torch.utils.tensorboard import SummaryWriter
+
 from src.data.wiki_dataloader import EpochDataloader
 from src.data.wiki_dataset import WikiDataset
 from src.models.load_ltm_model import load_ltm_model
@@ -46,6 +46,24 @@ torch._dynamo.config.verbose = True
 import faulthandler
 
 faulthandler.enable()
+
+
+def create_dir_with_name(base_dir: str, name: str):
+
+    # Construct the directory path
+    dir = os.path.join(base_dir, name)
+
+    # Create the directory, including all intermediate directories
+    os.makedirs(dir, exist_ok=True)
+
+    return dir
+
+
+def create_name():
+    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Get the current hostname
+    hostname = socket.gethostname()
+    return f"{current_time}_{hostname}"
 
 
 def _crop_batch(input_ids: torch.Tensor, attention_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -350,19 +368,26 @@ args = init_arguments()
 args = load_config(args.config)
 set_seed(args.seed)
 
-run_dir = Path(args.checkpoint_dir) / args.experiment_name / "runs"
+name = create_name()
+
+run_dir = Path(create_dir_with_name(args.checkpoint_dir, name)) / "runs"
 if not os.path.exists(run_dir):
     os.makedirs(run_dir)
-log_dir = run_dir / "logs.log"
 
-file_handler = logging.FileHandler(str(log_dir))
+log_dir = create_dir_with_name(args.log_dir, name)
+
+file_handler = logging.FileHandler(log_dir + "/train.log")
 file_handler.setFormatter(ColourFormatter())
 logger.addHandler(file_handler)
+
+tensorboard_writer = SummaryWriter(log_dir=log_dir)
 
 # PROCESS WILL CLOSE AFTER MAIN COMPLETION
 # logger_process = setup_logger_process()
 
-tensorboard_writer = SummaryWriter(log_dir=run_dir)
+# Save train config to log_dir
+content_dir = Path(args.content_dir).resolve()
+shutil.copy(content_dir / "configs" / "train_config.yml", log_dir)
 
 saved_checkpoints_queue = deque()
 
