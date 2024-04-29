@@ -21,7 +21,6 @@ from tqdm.auto import tqdm
 from transformers.trainer_pt_utils import get_model_param_count
 from transformers.trainer_utils import set_seed
 from transformers.utils import logging as tr_logging
-
 from src.utils.logger_singleton import ColourFormatter
 
 tr_logging.set_verbosity_error()
@@ -101,6 +100,24 @@ class Trainer:
 
         self.eval_dataloader = self.get_eval_dataloader()
         self.train_dataloader = self.get_train_dataloader()
+
+    def load_checkpoint(self, checkpoint_path: str):
+
+        # Load LTM model and variables
+        with open(checkpoint_path + "/ltm.pkl", "rb") as f:
+            checkpoint = pickle.load(f)
+            self.cycle = checkpoint["cycle"]
+            self.batch_to_start = checkpoint["batch_step"] + 1
+            self.batch_step = self.batch_to_start + 1
+            self.ltm_optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            self.ltm_model.load_state_dict(checkpoint["model_parameters"])
+
+        # Load Memory Model
+        with open(checkpoint_path + "/memory_model.pkl", "rb") as f:
+            checkpoint = pickle.load(f)
+            self.memory_model_optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            self.memory_model.load_state_dict(checkpoint["model_parameters"])
+            self.memory_model.to(self.memory_model.device)
 
     def get_eval_dataloader(self):
         return EpochDataloader(
@@ -256,7 +273,8 @@ class Trainer:
 
         return episode_loss / num_steps
 
-    def train(self):
+    def train(self, train_from_checkpoint: bool = False):
+        global epoch
 
         logger.info("Starting the training process...")
         logger.info(
@@ -265,9 +283,8 @@ class Trainer:
         logger.info(
             f"Number of trainable parameters (MemoryModel) = {get_model_param_count(self.memory_model, trainable_only=True)}"
         )
-
-        self.cycle, self.batch_step = 0, 0
-        global train_cycle, epoch
+        if not train_from_checkpoint:
+            self.cycle, self.batch_step = 0, 0
 
         ltm_model_iterations = self.args.trainer_args.ltm_model_iterations
         memory_model_iterations = self.args.trainer_args.memory_model_iterations
@@ -282,6 +299,9 @@ class Trainer:
         batch_buffer, num_transitions_in_buffer = [], 0
 
         for batch in tqdm(self.train_dataloader, total=len(self.train_dataloader)):
+            if train_from_checkpoint and batch < self.batch_to_start:
+                continue
+
             if is_ltm_training:
                 ltm_loss += self.train_ltm_on_episode(batch)
                 ltm_iteration_count += 1
@@ -306,6 +326,7 @@ class Trainer:
                         self.ltm_model,
                         self.memory_module,
                         self.args,
+                        logger,
                     )
 
                     memory_iteration_count += 1
@@ -352,12 +373,8 @@ def init_arguments() -> argparse.Namespace:
 
 
 def setup_logger_process():
-    global run_dir
-    log_dir = run_dir / "logs.log"
-    file_handler = logging.FileHandler(log_dir)
-    file_handler.setFormatter(ColourFormatter())
-    logger.addHandler(file_handler)
-    return subprocess.Popen(["python3", "log_mem_usage.py", log_dir])
+    global log_dir
+    return subprocess.Popen(["python3", "log_mem_usage.py", log_dir + "/memory.log"])
 
 
 # global tensorboard_writer, saved_checkpoints_queue, run_dir, logger_process
@@ -375,19 +392,23 @@ if not os.path.exists(run_dir):
     os.makedirs(run_dir)
 
 log_dir = create_dir_with_name(args.log_dir, name)
-
-file_handler = logging.FileHandler(log_dir + "/train.log")
+log_file = log_dir + "/train.log"
+file_handler = logging.FileHandler(log_file)
 file_handler.setFormatter(ColourFormatter())
 logger.addHandler(file_handler)
 
 tensorboard_writer = SummaryWriter(log_dir=log_dir)
 
 # PROCESS WILL CLOSE AFTER MAIN COMPLETION
-# logger_process = setup_logger_process()
+logger_process = setup_logger_process()
 
 # Save train config to log_dir
 content_dir = Path(args.content_dir).resolve()
 shutil.copy(content_dir / "configs" / "train_config.yml", log_dir)
+
+logger.info(f"Experiment name: {args.experiment_name}")
+logger.info(f"Checkpoints dir: {run_dir}")
+logger.info(f"Log dir: {log_dir}")
 
 saved_checkpoints_queue = deque()
 
@@ -442,9 +463,7 @@ try:
             logger.info("-" * 100)
             logger.info("End of training.")
             break
-except KeyboardInterrupt:
+except (KeyboardInterrupt, Exception):
     logger.info("-" * 100)
     logger.info("Exiting from training early")
-
-# except:
-#     logger_process.kill()
+    logger_process.kill()

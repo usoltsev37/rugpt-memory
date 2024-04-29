@@ -84,7 +84,7 @@ class REINFORCE:
         memory_vectors = torch.stack([a.memory_vectors[j] for a, (_, j) in zip(selected_actions, ids)])
         return Action(positions.detach(), memory_vectors.detach())
 
-    def update(self, transitions: list[list]) -> float | None:
+    def update(self, transitions: list[list], logger) -> float | None:
         """
         Updates the agent's policy based on collected transitions.
 
@@ -94,6 +94,7 @@ class REINFORCE:
         state, action, reward, old_proba, old_distr = zip(*transitions)
         bs, num_transitions = state[0].memory.shape[0], len(state)
         losses = []
+        entropies = []
 
         for step in range(self.batches_per_update):
             ids = np.random.choice(range(num_transitions * bs), self.batch_size, replace=False)
@@ -130,5 +131,8 @@ class REINFORCE:
             self.optim.zero_grad()
 
             losses.append(loss.item())
+            entropies.append(entropy.mean().item())
+
+        logger.info(f"RL entropy: {np.mean(entropies)}")
 
         return np.mean(losses)

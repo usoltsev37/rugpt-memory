@@ -60,6 +60,7 @@ def train_rl(
     ltm_model: LTM_GPT,
     memory_module,
     train_config: TrainingArguments,
+    logger,
 ):
     """
     Training a memory model using reinforcement learning with a fixed LTM model.
@@ -86,7 +87,7 @@ def train_rl(
         transitions.extend(batch_traj)
 
     agent.model.train()
-    mean_loss = reinforce.update(transitions)
+    mean_loss = reinforce.update(transitions, logger)
     # tensorboard_writer.add_scalar("Loss/memory_model_train_iteration_loss", mean_loss)
 
     return mean_loss
