@@ -39,8 +39,8 @@ from src.models.rl.utils import State
 from src.utils.logger_singleton import logger
 from src.utils.train_config import *
 
-torch._logging.set_logs(dynamo=logging.DEBUG)
-torch._dynamo.config.verbose = True
+# torch._logging.set_logs(dynamo=logging.DEBUG)
+# torch._dynamo.config.verbose = True
 
 import faulthandler
 
@@ -218,6 +218,26 @@ class Trainer:
                 },
                 f,
             )
+
+        # torch.save(
+        #     {
+        #         "cycle": self.cycle,
+        #         "batch_step": self.batch_step,
+        #         "model_parameters": self.ltm_model.state_dict(),
+        #         "optimizer_state_dict": self.ltm_optimizer.state_dict(),
+        #     },
+        # output_dir / "ltm.pt"
+        # )
+
+        # torch.save(
+        #     {
+        #         "cycle": self.cycle,
+        #         "batch_step": self.batch_step,
+        #         "model_parameters": self.memory_model.state_dict(),
+        #         "optimizer_state_dict": self.memory_model_optimizer.state_dict(),
+        #     },
+        #     output_dir / "memory_model.pt",
+        # )
 
     def save_checkpoint(self):
         global run_dir
@@ -463,7 +483,8 @@ try:
             logger.info("-" * 100)
             logger.info("End of training.")
             break
-except (KeyboardInterrupt, Exception):
+except (KeyboardInterrupt, Exception) as e:
     logger.info("-" * 100)
     logger.info("Exiting from training early")
+    logger.error(e)
     logger_process.kill()
