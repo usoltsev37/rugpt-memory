@@ -37,9 +37,9 @@ class RLParams:
     min_transitions_per_update: int
     gamma: float = field(default=0.99)
     clip: float = field(default=0.2)
-    entropy_coef: float = field(default=1e-2)
+    entropy_coef: float = field(default=1e-3)
     clip_grad_norm: float = field(default=1.0)
-    kl_target: float = field(default=0.1)
+    kl_target: float = field(default=0.2)
 
 
 @dataclass
@@ -73,6 +73,7 @@ class TrainingArguments:
     content_dir: str
     pretrained_model_name_or_path: str
     checkpoint_base_cache_dir: str
+    log_dir: str
     checkpoint_dir: str
     checkpoint_interval: int
     max_eval_steps: int
