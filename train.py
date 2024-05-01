@@ -100,6 +100,8 @@ class Trainer:
 
         self.eval_dataloader = self.get_eval_dataloader()
         self.train_dataloader = self.get_train_dataloader()
+        
+        self.ltm_clip_grad_norm = args.trainer_args.ltm_clip_grad_norm
 
     def load_checkpoint(self, checkpoint_path: str):
 
@@ -272,6 +274,9 @@ class Trainer:
             loss, embeddings = self.ltm_model(input_ids, attention_mask, self.memory_module.memory)
 
             loss.backward()
+            
+            nn.utils.clip_grad_norm_(self.ltm_model.parameters(), self.ltm_clip_grad_norm)
+            
             self.ltm_optimizer.step()
             self.ltm_optimizer.zero_grad()
 
