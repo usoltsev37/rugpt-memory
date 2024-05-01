@@ -39,6 +39,7 @@ class RLParams:
     kl_target: float
     min_transitions_per_update: int
     num_prefixes_for_reward_calc: int
+    num_pretrain_steps: int
     
 
 @dataclass

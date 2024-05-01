@@ -26,6 +26,7 @@ class LTMEnvironment:
         ltm_model: LTM_GPT,
         memory_module: MemoryModule,
         num_prefixes_for_reward_calc: int,
+        pretrain_mode: bool = False
     ) -> None:
         self.attention_mask = None
         self.data = None
@@ -39,6 +40,7 @@ class LTMEnvironment:
         self.step_length = ltm_model.step_length
         self.memory_module = memory_module
         self.num_prefixes_for_reward_calc = num_prefixes_for_reward_calc
+        self.pretrain_mode = pretrain_mode
 
     def reset(self, data: dict) -> State:
         """Returns a new state in the form of empty memory and high-level embeddings of text (max_seq_len)
@@ -73,25 +75,34 @@ class LTMEnvironment:
 
     def step(self, action: Action) -> tuple[State, torch.Tensor, bool]:
         self.cur_step += 1
-
-        reward = self.ltm_model.get_output(
-            self.embeddings,
-            self.input_ids,
-            self.attention_mask,
-            self.memory_module.memory,
-            reward_for_agent=True,
-        )
-
-        # Try other prefixes
-        for _ in range(self.num_prefixes_for_reward_calc - 1):
-            input_ids, attention_mask = _crop_batch(self.input_ids, self.attention_mask, self.attention_mask[0].sum(-1))
-            prefix_reward, _ = self.ltm_model(
-                input_ids, attention_mask, self.memory_module.memory, reward_for_agent=True
+        
+        if self.pretrain_mode:
+            memory_vectors = action.memory_vectors.to(self.embeddings.device)
+            mu, sigma = (self.embeddings.mean(dim=(2, 1)), 
+                        self.embeddings.std(dim=(2, 1)))
+            action_mu, action_sigma = (memory_vectors.mean(dim=(2, 1)),
+                                       memory_vectors.std(dim=(2, 1)))
+            
+            reward = (mu - action_mu) ** 2 + (sigma - action_sigma) ** 2
+        else:
+            reward = self.ltm_model.get_output(
+                self.embeddings,
+                self.input_ids,
+                self.attention_mask,
+                self.memory_module.memory,
+                reward_for_agent=True,
             )
 
-            reward += prefix_reward
+            # Try other prefixes
+            for _ in range(self.num_prefixes_for_reward_calc - 1):
+                input_ids, attention_mask = _crop_batch(self.input_ids, self.attention_mask, self.attention_mask[0].sum(-1))
+                prefix_reward, _ = self.ltm_model(
+                    input_ids, attention_mask, self.memory_module.memory, reward_for_agent=True
+                )
 
-        reward /= self.num_prefixes_for_reward_calc
+                reward += prefix_reward
+
+            reward /= self.num_prefixes_for_reward_calc
 
         self.memory_module.update(action)
 

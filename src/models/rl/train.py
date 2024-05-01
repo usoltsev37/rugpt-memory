@@ -61,6 +61,7 @@ def train_rl(
     memory_module,
     train_config: TrainingArguments,
     logger,
+    pretrain_mode: bool = False
 ):
     """
     Training a memory model using reinforcement learning with a fixed LTM model.
@@ -77,6 +78,7 @@ def train_rl(
         ltm_model,
         memory_module,
         num_prefixes_for_reward_calc=train_config.rl_params.num_prefixes_for_reward_calc,
+        pretrain_mode=pretrain_mode
     )
     reinforce = REINFORCE(agent, optimizer, train_config=train_config.rl_params)
 

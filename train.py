@@ -297,10 +297,45 @@ class Trainer:
             self.memory_module.update(action)
 
         return episode_loss / num_steps
+        
+    def memory_model_pretrain(self,):
+        dataloader = self.train_dataloader.__iter__()
+        batch_buffer, num_transitions_in_buffer = [], 0
+        self.ltm_model.freeze()
+        self.memory_model.unfreeze()   
+        flaq = False
+        
+        for _ in range(self.args.rl_params.num_pretrain_steps):
+            while not flaq:
+                batch = next(dataloader)
+                bs, num_steps, _ = batch["input_ids"].shape
+                cur_transitions = bs * (num_steps - 1) 
+                if cur_transitions + num_transitions_in_buffer < self.args.rl_params.min_transitions_per_update:
+                    if cur_transitions:
+                        batch_buffer.append(batch)
+                        num_transitions_in_buffer += cur_transitions
+                else:
+                    batch_buffer.append(batch)
+                    memory_model_loss = train_rl(
+                        batch_buffer,
+                        self.agent,
+                        self.memory_model_optimizer,
+                        self.ltm_model,
+                        self.memory_module,
+                        self.args,
+                        logger,
+                        pretrain_mode=True
+                    )
+                    batch_buffer, num_transitions_in_buffer = [], 0
+                    flaq = True
+            logger.info(f"pretrain_memory_model_loss: {memory_model_loss}")
+
 
     def train(self, train_from_checkpoint: bool = False):
         global epoch
-
+        logger.info("Pretrain MemoryModel...")
+        self.memory_model_pretrain()
+        
         logger.info("Starting the training process...")
         logger.info(
             f"Number of trainable parameters (LTM) = {get_model_param_count(self.ltm_model, trainable_only=True)}"

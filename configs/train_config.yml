@@ -39,11 +39,12 @@ rl_params:
   batch_size: 8
   clip: 0.2
   clip_grad_norm: 1.0
-  entropy_coef: 1e-3
+  entropy_coef: 1e-4
   gamma: 0.99
   kl_target: 0.1
   min_transitions_per_update: 64
   num_prefixes_for_reward_calc: 3
+  num_pretrain_steps: 200
 
 ltm_params:
   cnt_blocks_with_memory: 2

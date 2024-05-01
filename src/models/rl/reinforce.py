@@ -133,6 +133,6 @@ class REINFORCE:
             losses.append(loss.item())
             entropies.append(entropy.mean().item())
 
-        logger.info(f"RL entropy: {np.mean(entropies)}")
+        # logger.info(f"RL entropy: {np.mean(entropies)}")
 
         return np.mean(losses)
