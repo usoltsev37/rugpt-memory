@@ -84,6 +84,6 @@ class DecoderBlock(nn.Module):
     ) -> torch.tensor:
         embeddings = self.dense_network_for_embeddings(embeddings)
         memory = self.ln_1(memory)
-        attention_mask = (1 - attention_mask).bool().to(memory.device)
+        attention_mask = (1 - attention_mask).to(memory.device, dtype=torch.bool)
         memory = memory + self.attn(memory, embeddings, embeddings, key_padding_mask=attention_mask)[0]
         return memory + self.mlp(self.ln_2(memory))

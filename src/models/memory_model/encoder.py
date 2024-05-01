@@ -70,8 +70,8 @@ class EncoderBlock(nn.Module):
 
     def forward(self, x: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
         x = self.ln_1(x)
-        attn_mask = torch.triu(torch.full((x.shape[1], x.shape[1]), 1.0), diagonal=1).bool().to(x.device)
-        key_padding_mask = (1 - attention_mask).bool()
+        attn_mask = torch.triu(torch.full((x.shape[1], x.shape[1]), 1.0), diagonal=1).to(x.device, dtype=torch.bool)
+        key_padding_mask = (1 - attention_mask).to(dtype=torch.bool)
 
         x = (
             x
