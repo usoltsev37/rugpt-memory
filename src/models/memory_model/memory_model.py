@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import time
 
 from src.models.memory_model.action_sampler import ActionSampler
 from src.models.memory_model.decoder import Decoder, DecoderBlock
@@ -75,22 +76,36 @@ class MemoryModel(torch.nn.Module):
 class SyntheticTaskModel(torch.nn.Module):
     def __init__(self, num_vectors: int, d_mem: int, memory_type: str):
         super().__init__()
+        self.d_embd = 16
         self.d_mem = d_mem
         self.num_vectors = num_vectors
         self.memory_type = memory_type
-        self.fc1 = nn.Linear(d_mem, d_mem)
+        self.device = torch.device("cuda:1")
+        self.dtype = torch.float32
+        self.fc1 = nn.Linear(d_mem, d_mem * 4)
         self.conv1 = nn.Conv1d(d_mem, d_mem * 4, kernel_size=num_vectors, padding="same")
         self.conv2 = nn.Conv1d(d_mem * 4, d_mem, kernel_size=num_vectors, padding="same")
-        self.fc2 = nn.Linear(d_mem, 1)
-        self.fc3 = nn.Linear(d_mem, d_mem * 2)
+        self.fc2 = nn.Linear(d_mem * 4, 1)
+        # self.fc3 = nn.Linear(d_mem, d_mem * 2)
+        self.fcc = nn.Linear(self.num_vectors, self.num_vectors)
+
+        self.to(self.device)
 
     def forward(self, x: State) -> tuple[torch.Tensor, torch.Tensor]:
-        x = F.relu(self.fc1(x.memory))
+        mem = x.memory.to(torch.device("cuda:1"))
+        # print(mem)
+        x = F.relu(self.fc1(mem))
+        # print("first_linear", x)
+
         x = x.permute(0, 2, 1)
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
+        # x = F.relu(self.conv1(x))
+        # x = F.relu(self.conv2(x))
+        x = self.fcc(x)
         x = x.permute(0, 2, 1)
         out1 = self.fc2(x)
+        # print("second_linear", out1)
+        mu_distr = torch.ones(mem.shape).to(mem.device)
+        sigma_distr = torch.full(mem.shape, -10).to(mem.device)
 
         positions = None
         if self.memory_type == "conservative":
@@ -98,4 +113,19 @@ class SyntheticTaskModel(torch.nn.Module):
         elif self.memory_type == "flexible":
             positions = F.sigmoid(out1.squeeze(dim=-1))  # [batch_size, num_vectors]
 
-        return positions.float(), self.fc3(x).float()
+        # print("after softmax", positions)
+        # print()
+        # time.sleep(30)
+        # print()
+        # print(positions[:, 0].mean())
+        return positions.float(), mu_distr, sigma_distr
+
+    def freeze(self) -> None:
+        self.eval()
+        for p in self.parameters():
+            p.requires_grad = False
+
+    def unfreeze(self) -> None:
+        self.train()
+        for p in self.parameters():
+            p.requires_grad = True

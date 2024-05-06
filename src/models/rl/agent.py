@@ -56,6 +56,7 @@ class Agent(nn.Module):
         :param normal_distr: the normal distribution for memory vectors updates.
         :return: the total entropy of the action distribution.
         """
+
         normal_entropy = normal_distr.entropy().sum(-1)
         if self.memory_type == "conservative":
             cat_entropy = pos_distr.entropy()
@@ -142,7 +143,7 @@ class Agent(nn.Module):
         state.to(self.device)
 
         # Sample distribution parameters for positions and memory vectors based on the current state
-        positions_param, memory_vectors_param = self.model(state)
+        positions_param, mu, sigma = self.model(state)
 
         # Sample positions based on the memory type
         pos_distr_cls = Categorical if self.memory_type == "conservative" else Bernoulli
@@ -150,7 +151,6 @@ class Agent(nn.Module):
         positions = pos_distr.sample()
 
         # Sample memory vectors from a normal distribution
-        mu, sigma = memory_vectors_param.split(self.d_mem, dim=-1)
         sigma = torch.exp(sigma)
         normal_distr = Normal(mu, sigma)
         memory_vectors = normal_distr.sample()
@@ -174,12 +174,11 @@ class Agent(nn.Module):
         state.to(self.device)
         action.to(self.device)
 
-        positions_param, memory_vectors_param = self.model(state)
+        positions_param, mu, sigma = self.model(state)
 
         pos_distr_cls = Categorical if self.memory_type == "conservative" else Bernoulli
         pos_distr = pos_distr_cls(positions_param)
 
-        mu, sigma = memory_vectors_param.split(self.d_mem, dim=-1)
         sigma = torch.exp(sigma)
         normal_distr = Normal(mu, sigma)
         log_proba_normal_distr = normal_distr.log_prob(action.memory_vectors).sum(-1)

@@ -2,7 +2,7 @@ import torch
 
 from src.models.ltm_gpt.ltm_gpt import LTM_GPT
 from src.models.rl.reinforce import Agent
-from src.models.rl.envs import LTMEnvironment
+from src.models.rl.envs import LTMEnvironment, PretrainEnv
 from src.models.rl.reinforce import REINFORCE
 from src.utils.train_config import RLParams, TrainingArguments
 
@@ -32,7 +32,9 @@ def compute_rewards(trajectory: list[list], gamma: float):
     ]
 
 
-def sample_episodes(env: LTMEnvironment, reinforce: REINFORCE, data: dict, train_config: RLParams) -> [tuple]:
+def sample_episodes(
+    env: LTMEnvironment | PretrainEnv, reinforce: REINFORCE, data: dict, train_config: RLParams
+) -> [tuple]:
     """
     Samples an episode of interaction between an reinforce and an environment,
     then computes and returns the discounted rewards for each step in the episode.
@@ -60,8 +62,10 @@ def train_rl(
     ltm_model: LTM_GPT,
     memory_module,
     train_config: TrainingArguments,
+    alpha: torch.nn.parameter.Parameter,
+    alpha_optimizer: torch.optim.SGD,
     logger,
-    pretrain_mode: bool = False
+    pretrain_mode: bool = False,
 ):
     """
     Training a memory model using reinforcement learning with a fixed LTM model.
@@ -78,9 +82,11 @@ def train_rl(
         ltm_model,
         memory_module,
         num_prefixes_for_reward_calc=train_config.rl_params.num_prefixes_for_reward_calc,
-        pretrain_mode=pretrain_mode
+        pretrain_mode=pretrain_mode,
     )
-    reinforce = REINFORCE(agent, optimizer, train_config=train_config.rl_params)
+    reinforce = REINFORCE(
+        agent, optimizer, train_config=train_config.rl_params, alpha=alpha, alpha_optimizer=alpha_optimizer
+    )
 
     transitions = []
 

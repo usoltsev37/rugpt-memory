@@ -24,19 +24,31 @@ def distr_to_device(distr: dict, device: torch.device, memory_type: str = "conse
 
 
 class REINFORCE:
-    def __init__(self, agent: Agent, optimizer: torch.optim, train_config: RLParams):
+    def __init__(
+        self,
+        agent: Agent,
+        optimizer: torch.optim,
+        train_config: RLParams,
+        alpha: torch.nn.parameter.Parameter,
+        alpha_optimizer: torch.optim,
+    ):
 
         self.agent = agent
         self.optim = optimizer
+
+        self.alpha = alpha
+        self.alpha_optimizer = alpha_optimizer
         self.device = self.agent.device
 
         self.clip = train_config.clip
         self.batches_per_update = train_config.batches_per_update
         self.batch_size = train_config.batch_size
 
-        self.entropy_coef = train_config.entropy_coef
         self.clip_grad_norm = train_config.clip_grad_norm
         self.kl_target = train_config.kl_target
+        self.target_entropy = train_config.target_entropy
+
+        self.entropy_coef = train_config.entropy_coef
 
     def act(self, state: State) -> (Action, torch.Tensor, dict):
         """
@@ -84,7 +96,7 @@ class REINFORCE:
         memory_vectors = torch.stack([a.memory_vectors[j] for a, (_, j) in zip(selected_actions, ids)])
         return Action(positions.detach(), memory_vectors.detach())
 
-    def update(self, transitions: list[list], logger) -> float | None:
+    def update(self, transitions: list[list], tensorboard_writer, iter) -> float | None:
         """
         Updates the agent's policy based on collected transitions.
 
@@ -95,6 +107,7 @@ class REINFORCE:
         bs, num_transitions = state[0].memory.shape[0], len(state)
         losses = []
         entropies = []
+        rew = []
 
         for step in range(self.batches_per_update):
             ids = np.random.choice(range(num_transitions * bs), self.batch_size, replace=False)
@@ -113,6 +126,7 @@ class REINFORCE:
 
             if step > 0 and self.kl_target is not None and torch.mean(kld) > self.kl_target:
                 logger.warning(f"Early stopping! KLD is {torch.mean(kld)} on iteration {step + 1}")
+                tensorboard_writer.add_scalar("Iteration mean reward", np.mean(rew), iter)
                 return np.mean(losses) if losses else None
 
             ratio = torch.exp(cur_proba - old_proba_batch)
@@ -122,17 +136,25 @@ class REINFORCE:
                 torch.clamp(ratio, 1 - self.clip, 1 + self.clip) * reward_batch,
             )
 
+            # loss -= self.alpha.item() * entropy
             loss -= self.entropy_coef * entropy
             loss = loss.mean()
             loss.backward()
-
             nn.utils.clip_grad_norm_(self.agent.parameters(), self.clip_grad_norm)
             self.optim.step()
             self.optim.zero_grad()
 
+            # alpha_loss = self.alpha * (entropy.detach() - self.target_entropy).mean()
+            # alpha_loss.backward()
+            # self.alpha_optimizer.step()
+            # self.alpha_optimizer.zero_grad()
+
             losses.append(loss.item())
             entropies.append(entropy.mean().item())
+            rew.append(reward_batch.mean().item())
 
-        # logger.info(f"RL entropy: {np.mean(entropies)}")
+        # tensorboard_writer.add_scalar("Iteration alpha", self.alpha.item(), iter)
+        tensorboard_writer.add_scalar("Iteration entropy", np.mean(entropies), iter)
+        tensorboard_writer.add_scalar("Iteration mean reward", np.mean(rew), iter)
 
         return np.mean(losses)

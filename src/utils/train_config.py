@@ -26,21 +26,23 @@ class MemoryModelParams:
     n_dec_block: int
     n_enc_block: int
     memory_type: str = field(default="conservative")
-    
+
 
 @dataclass
 class RLParams:
+    alpha_lr: float
     batches_per_update: int
     batch_size: int
-    clip: float 
+    clip: float
     clip_grad_norm: float
-    entropy_coef: float
+    alpha_start: float
     gamma: float
     kl_target: float
     min_transitions_per_update: int
     num_prefixes_for_reward_calc: int
-    num_pretrain_steps: int
-    
+    target_entropy: float
+    entropy_coef: float
+
 
 @dataclass
 class TrainerArgs:
@@ -52,7 +54,7 @@ class TrainerArgs:
     ltm_model_iterations: int
     memory_model_learning_rate: float
     memory_model_iterations: int
-    optimizer: str    
+    optimizer: str
     torch_dtype: str
 
 
@@ -71,7 +73,7 @@ class TrainingArguments:
     memory_model_params: MemoryModelParams
     pretrained_model_name_or_path: str
     rl_params: RLParams
-    seed: int    
+    seed: int
     trainer_args: TrainerArgs
 
 

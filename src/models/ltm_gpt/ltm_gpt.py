@@ -22,6 +22,7 @@ class LTM_GPT(nn.Module):
 
         self.labels = None
         self.dtype = model_._dtype
+        self.d_embd = model_.config.n_embd
         self.step_length = model_.step_length
         self.add_lora = model_.add_lora
         self.ignore_index = ignore_index

@@ -26,8 +26,11 @@ class MemoryModule:
         """Initialize a new memory"""
         if self.memory is None or self.memory.shape[0] != batch_size:
             self.memory = torch.zeros(batch_size, self.num_vectors, self.d_mem)
+            # self.memory = torch.ones(batch_size, self.num_vectors, self.d_mem)
         else:
             self.memory.zero_()
+
+        # self.memory = torch.ones(batch_size, self.num_vectors, self.d_mem) * 5
 
     def update(self, action: Action):
         mask = F.one_hot(action.positions, num_classes=self.num_vectors)

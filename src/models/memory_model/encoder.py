@@ -42,7 +42,6 @@ class EncoderBlock(nn.Module):
     def __init__(
         self,
         d_embd: int = 5120,
-        d_hid: int = 5120 // 8,
         n_head: int = 4,
         dtype: torch.dtype = torch.float32,
         dropout: float = 0,
@@ -56,7 +55,6 @@ class EncoderBlock(nn.Module):
         """
         super().__init__()
         self.d_embd = d_embd
-        self.d_hid = d_hid
         self.n_head = n_head
         self.dtype = dtype
 
@@ -64,7 +62,7 @@ class EncoderBlock(nn.Module):
         self.ln_1 = nn.LayerNorm(d_embd)
         self.attn = nn.MultiheadAttention(d_embd, n_head, dropout, batch_first=True)
         self.ln_2 = nn.LayerNorm(d_embd)
-        self.mlp = DenseNetwork(1, d_embd, d_hid, d_embd, dropout=dropout)
+        self.mlp = DenseNetwork(1, d_embd, d_embd * 2, d_embd, dropout=dropout)
 
         torch.set_default_dtype(torch.float32)
 
@@ -79,9 +77,9 @@ class EncoderBlock(nn.Module):
                 x,
                 x,
                 x,
-                is_causal=True,
-                attn_mask=attn_mask,
-                key_padding_mask=key_padding_mask,
+                # is_causal=True,
+                # attn_mask=attn_mask,
+                # key_padding_mask=key_padding_mask,
             )[0]
         )
         return x + self.mlp(self.ln_2(x))

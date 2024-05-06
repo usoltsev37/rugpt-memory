@@ -28,23 +28,25 @@ trainer_args:
   num_train_epochs: 1
   ltm_clip_grad_norm: 1.0
   ltm_learning_rate: 2e-5
-  ltm_model_iterations: 40
+  ltm_model_iterations: 1
   memory_model_learning_rate: 2e-5
   memory_model_iterations: 40
   optimizer: adamw   
   torch_dtype: float32
 
 rl_params:
+  alpha_lr: 1e-4
   batches_per_update: 8
   batch_size: 8
   clip: 0.2
   clip_grad_norm: 1.0
-  entropy_coef: 1e-4
+  entropy_coef: 1e-3
   gamma: 0.99
   kl_target: 0.1
   min_transitions_per_update: 64
   num_prefixes_for_reward_calc: 3
-  num_pretrain_steps: 200
+  num_pretrain_steps: 1000
+  target_entropy: 100.
 
 ltm_params:
   cnt_blocks_with_memory: 2

@@ -2,6 +2,7 @@ import copy
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from src.models.memory_model.dense import DenseNetwork
 
@@ -69,11 +70,11 @@ class DecoderBlock(nn.Module):
             out_dim=d_mem,
             dropout=dropout,
         )
-
+        # ...
         self.ln_1 = nn.LayerNorm(d_mem)
         self.attn = nn.MultiheadAttention(d_mem, n_head, dropout, batch_first=True)
         self.ln_2 = nn.LayerNorm(d_mem)
-        self.mlp = DenseNetwork(n_hid_layers=0, input_dim=d_mem, hidden_dim=d_mem, out_dim=d_mem, dropout=dropout)
+        self.mlp = DenseNetwork(n_hid_layers=1, input_dim=d_mem, hidden_dim=d_mem * 2, out_dim=d_mem, dropout=dropout)
         self.dropout = nn.Dropout(dropout)
 
     def forward(
@@ -85,5 +86,22 @@ class DecoderBlock(nn.Module):
         embeddings = self.dense_network_for_embeddings(embeddings)
         memory = self.ln_1(memory)
         attention_mask = (1 - attention_mask).to(memory.device, dtype=torch.bool)
-        memory = memory + self.attn(memory, embeddings, embeddings, key_padding_mask=attention_mask)[0]
+        memory = (
+            memory
+            + self.attn(
+                memory,
+                embeddings,
+                embeddings,
+                # key_padding_mask=attention_mask
+            )[0]
+        )
+        # memory = (
+        #     memory
+        #     + self.attn(
+        #         memory,
+        #         memory,
+        #         memory,
+        #         # key_padding_mask=attention_mask
+        #     )[0]
+        # )
         return memory + self.mlp(self.ln_2(memory))

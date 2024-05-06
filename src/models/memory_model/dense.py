@@ -52,6 +52,7 @@ class DenseNetwork(nn.Module):
                 nn.init.zeros_(param)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # to do: check activation function
         if len(self.layers) > 1:
             for layer in self.layers[:-1]:
                 x = self.act(layer(x)) if isinstance(layer, nn.Linear) else layer(x)
