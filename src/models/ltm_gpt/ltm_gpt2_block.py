@@ -3,7 +3,6 @@ from torch import nn
 
 from src.models.memory_model.dense import DenseNetwork
 
-
 class LTMGPT2Block(nn.Module):
     """Custom LTMGPT2Block layer with memory"""
 
@@ -51,12 +50,11 @@ class LTMGPT2Block(nn.Module):
         self.ln2 = nn.LayerNorm(self.embed_dim, dtype=self.dtype)
 
     def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor, memory: torch.Tensor) -> torch.Tensor:
-        attention_mask = attention_mask[:, None, None, :]
+        attention_mask = attention_mask[:, None, None, :].contiguous()
         attention_mask = (1.0 - attention_mask) * torch.finfo(hidden_states.dtype).min
         attention_mask = attention_mask.to(device=hidden_states.device)
-
+        
         query = self.gpt2_block(hidden_states=hidden_states, attention_mask=attention_mask)[0]
-
         residual = query
 
         # DenseNetwork
@@ -75,6 +73,7 @@ class LTMGPT2Block(nn.Module):
 
         # Norm & Sum
         x = x + residual
+        
         x = self.ln2(x)
 
         return x

@@ -49,7 +49,8 @@ class DenseNetwork(nn.Module):
 
         if initialize_with_zeros:
             for param in self.parameters():
-                nn.init.zeros_(param)
+                nn.init.normal_(param, mean=0., std=1e-4)
+                
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # to do: check activation function
