@@ -2,8 +2,8 @@ checkpoint_base_cache_dir: /home/ybelova/repos/rugpt-memory/checkpoints/base/hug
 checkpoint_dir: /media/public/ybelova/rugpt-memory/checkpoints
 checkpoint_interval: 10
 content_dir: '.'
-experiment_name: base:add_sigma_borders:change_target_ent
-log_dir: /home/ybelova/repos/rugpt-memory/logs/runs/train
+experiment_name: test
+log_dir: /home/ybelova/repos/rugpt-memory/logs/runs/train_new/
 max_checkpoints: 5
 max_eval_steps: 32
 pretrained_model_name_or_path: ai-forever/rugpt3small_based_on_gpt2
@@ -19,7 +19,7 @@ memory_model_params:
   d_mem: 64
   d_embd: 768
   num_vectors: 8
-  n_dec_block: 3
+  n_dec_block: 2
   n_enc_block: 2
 
 trainer_args:
@@ -35,17 +35,16 @@ trainer_args:
 
 rl_params:
   alpha_lr: 1e-4
-  alpha_start: 1e-3
+  alpha_start: -6
   batches_per_update: 10
   batch_size: 16
   clip: 0.2
   clip_grad_norm: 1.0
-  entropy_coef: 1e-3
   gamma: 0.99
   kl_target: 1.5
   min_transitions_per_update: 128
   num_prefixes_for_reward_calc: 3
-  target_entropy: 15
+  target_entropy: 48
 
 ltm_params:
   cnt_blocks_with_memory: 2
