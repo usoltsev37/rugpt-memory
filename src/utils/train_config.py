@@ -42,7 +42,6 @@ class RLParams:
     min_transitions_per_update: int
     num_prefixes_for_reward_calc: int
     target_entropy: float
-    entropy_coef: float
 
 
 @dataclass

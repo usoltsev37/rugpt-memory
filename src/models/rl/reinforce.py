@@ -151,7 +151,7 @@ class REINFORCE:
             entropies.append(entropy.mean().item())
             rewards_.append(reward_batch.mean().item())
 
-        tensorboard_writer.add_scalar("Iteration Alpha", self.alpha.item(), iter)
+        tensorboard_writer.add_scalar("Iteration Alpha", torch.exp(self.alpha).item(), iter)
         tensorboard_writer.add_scalar("Iteration Mean Entropy", np.mean(entropies), iter)
         tensorboard_writer.add_scalar("Iteration Mean Reward", np.mean(rewards_), iter)
 

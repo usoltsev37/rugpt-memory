@@ -136,7 +136,7 @@ class PretrainEnv:
         self.memory_module = memory_module
         self.episode_max_steps = episode_max_steps
         self.aggregate_fn = "min"
-        self.step_length = args.trainer_args.step_length
+        self.step_length = args.ltm_params.step_length
         self.global_step = 0
         self.transform_matrix = torch.eye((self.memory_module.d_mem))
         # self.transform_matrix = torch.randn((self.memory_module.d_mem, self.ltm_model.d_embd))  # [d_mem, d_embd]
@@ -145,8 +145,8 @@ class PretrainEnv:
     def compute_dist(self, aggregate_fn: str = "min"):
         transformed_memory = self.memory_module.memory @ self.transform_matrix  # [num_vectors, d_embd]
         transformed_memory = transformed_memory.unsqueeze(2)
-        # dists = torch.linalg.norm(transformed_memory - self.embeddings.unsqueeze(1).cpu(), dim=-1)
-        dists = 1.0 - F.cosine_similarity(transformed_memory, self.embeddings.unsqueeze(1).cpu(), dim=-1)
+        dists = torch.linalg.norm(transformed_memory - self.embeddings.unsqueeze(1).cpu(), dim=-1)
+        # dists = 1.0 - F.cosine_similarity(transformed_memory, self.embeddings.unsqueeze(1).cpu(), dim=-1)
         if aggregate_fn == "min":
             return torch.min(dists, -1).values
         elif aggregate_fn == "max":
@@ -192,13 +192,7 @@ class PretrainEnv:
         self.memory_module.update(action=action)
 
         cur_dist = self.compute_dist(self.aggregate_fn).sum(-1)
-        reward = 2 * (self.prev_dist - cur_dist)
-
-        if self.global_step < 1000:
-            for i, p in enumerate(action.positions):
-                if p.item() in self.pos[i]:
-                    reward[i] = -100
-                self.pos[i].add(p.item())
+        reward = self.prev_dist - cur_dist
         self.prev_dist = cur_dist
 
         done = True if self.cur_step == self.episode_max_steps else False

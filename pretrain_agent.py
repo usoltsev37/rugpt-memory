@@ -131,11 +131,6 @@ logger.info(f"Log dir: {log_dir}")
 ltm_model, tokenizer = load_ltm_model(args)
 memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=ltm_model.dtype)
 
-# memory_model = SyntheticTaskModel(
-#     args.memory_model_params.num_vectors, args.memory_model_params.d_mem, memory_type="conservative"
-# )
-
-
 # Memory Model optimizer
 rl_optimizer = torch.optim.AdamW(
     memory_model.parameters(),
@@ -167,7 +162,7 @@ train_dataset = WikiDataset(data_path=str(dataset_path), split="train")
 train_dataloader = EpochDataloader(
     dataset=train_dataset,
     tokenizer=tokenizer,
-    step_length=args.trainer_args.step_length,
+    step_length=args.ltm_params.step_length,
     batch_size=args.trainer_args.batch_size,
     shuffle=True,
     num_workers=2,
