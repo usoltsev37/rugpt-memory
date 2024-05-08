@@ -7,11 +7,11 @@ class DenseNetwork(nn.Module):
     def __init__(
         self,
         n_hid_layers: int = 1,
-        input_dim: int = 5120,
-        hidden_dim: int = 10240,
-        out_dim: int = 5120,
+        input_dim: int = 768,
+        hidden_dim: int = 768 * 2,
+        out_dim: int = 768,
         dtype: torch.dtype = torch.float32,
-        dropout: float = 0,
+        dropout: float = 0.0,
         initialize_with_zeros=False,
     ):
         """

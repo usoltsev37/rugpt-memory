@@ -23,15 +23,15 @@ class Encoder(nn.Module):
         self.blocks = get_clones(block, n_block)
         self.ln_out = nn.LayerNorm(block.d_embd)
 
-    def forward(self, x: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
+    def forward(self, hidden_states: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
         """
-        :param x: Encoder input, tensor of sentence embeddings [batch, seq_len, d_embd]
+        :param hidden_states: Encoder input, tensor of sentence embeddings [batch, seq_len, d_embd]
         :param attention_mask:
         :return: Tensor of updated embeddings [batch, seq_len, d_embd]
         """
         for block in self.blocks:
-            x = block(x, attention_mask)
-        return self.ln_out(x)
+            hidden_states = block(hidden_states, attention_mask)
+        return self.ln_out(hidden_states)
 
 
 class EncoderBlock(nn.Module):
@@ -41,10 +41,10 @@ class EncoderBlock(nn.Module):
 
     def __init__(
         self,
-        d_embd: int = 5120,
+        d_embd: int = 768,
         n_head: int = 4,
         dtype: torch.dtype = torch.float32,
-        dropout: float = 0,
+        dropout: float = 0.0,
     ) -> None:
         """
         :param d_embd: LTM model embedding size
@@ -58,28 +58,33 @@ class EncoderBlock(nn.Module):
         self.n_head = n_head
         self.dtype = dtype
 
-        torch.set_default_dtype(self.dtype)
         self.ln_1 = nn.LayerNorm(d_embd)
         self.attn = nn.MultiheadAttention(d_embd, n_head, dropout, batch_first=True)
         self.ln_2 = nn.LayerNorm(d_embd)
-        self.mlp = DenseNetwork(1, d_embd, d_embd * 2, d_embd, dropout=dropout)
+        self.mlp = DenseNetwork(
+            n_hid_layers=1, input_dim=d_embd, hidden_dim=d_embd * 2, out_dim=d_embd, dropout=dropout
+        )
 
-        torch.set_default_dtype(torch.float32)
-
-    def forward(self, x: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
-        x = self.ln_1(x)
-        attn_mask = torch.triu(torch.full((x.shape[1], x.shape[1]), 1.0), diagonal=1).to(x.device, dtype=torch.bool)
+    def forward(self, hidden_states: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
+        attn_mask = torch.triu(torch.full((hidden_states.shape[1], hidden_states.shape[1]), 1.0), diagonal=1).to(
+            hidden_states.device, dtype=torch.bool
+        )
         key_padding_mask = (1 - attention_mask).to(dtype=torch.bool)
 
-        x = (
-            x
-            + self.attn(
-                x,
-                x,
-                x,
-                is_causal=True,
-                attn_mask=attn_mask,
-                key_padding_mask=key_padding_mask,
-            )[0]
-        )
-        return x + self.mlp(self.ln_2(x))
+        residual = hidden_states
+        hidden_states = self.ln_1(hidden_states)
+        attn_output = self.attn(
+            query=hidden_states,
+            key=hidden_states,
+            value=hidden_states,
+            is_causal=True,
+            attn_mask=attn_mask,
+            key_padding_mask=key_padding_mask,
+        )[0]
+        hidden_states = attn_output + residual
+
+        residual = hidden_states
+        hidden_states = self.ln_2(hidden_states)
+        feed_forward_hidden_states = self.mlp(hidden_states)
+        hidden_states = feed_forward_hidden_states + residual
+        return hidden_states
