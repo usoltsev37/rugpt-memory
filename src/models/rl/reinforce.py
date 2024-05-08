@@ -48,8 +48,6 @@ class REINFORCE:
         self.kl_target = train_config.kl_target
         self.target_entropy = train_config.target_entropy
 
-        self.entropy_coef = train_config.entropy_coef
-
     def act(self, state: State) -> (Action, torch.Tensor, dict):
         """
         Takes a state as input and returns the action, its probability, and the distributions used for sampling the
@@ -107,7 +105,7 @@ class REINFORCE:
         bs, num_transitions = state[0].memory.shape[0], len(state)
         losses = []
         entropies = []
-        rew = []
+        rewards_ = []
 
         for step in range(self.batches_per_update):
             ids = np.random.choice(range(num_transitions * bs), self.batch_size, replace=False)
@@ -126,7 +124,7 @@ class REINFORCE:
 
             if step > 0 and self.kl_target is not None and torch.mean(kld) > self.kl_target:
                 logger.warning(f"Early stopping! KLD is {torch.mean(kld)} on iteration {step + 1}")
-                tensorboard_writer.add_scalar("Iteration mean reward", np.mean(rew), iter)
+                tensorboard_writer.add_scalar("Iteration Mean Reward", np.mean(rewards_), iter)
                 return np.mean(losses) if losses else None
 
             ratio = torch.exp(cur_proba - old_proba_batch)
@@ -136,7 +134,7 @@ class REINFORCE:
                 torch.clamp(ratio, 1 - self.clip, 1 + self.clip) * reward_batch,
             )
 
-            loss -= torch.exp(self.alpha.item()) * entropy
+            loss -= torch.exp(self.alpha).item() * entropy
 
             loss = loss.mean()
             loss.backward()
@@ -151,10 +149,10 @@ class REINFORCE:
 
             losses.append(loss.item())
             entropies.append(entropy.mean().item())
-            rew.append(reward_batch.mean().item())
+            rewards_.append(reward_batch.mean().item())
 
-        tensorboard_writer.add_scalar("Iteration alpha", self.alpha.item(), iter)
-        tensorboard_writer.add_scalar("Iteration entropy", np.mean(entropies), iter)
-        tensorboard_writer.add_scalar("Iteration mean reward", np.mean(rew), iter)
+        tensorboard_writer.add_scalar("Iteration Alpha", self.alpha.item(), iter)
+        tensorboard_writer.add_scalar("Iteration Mean Entropy", np.mean(entropies), iter)
+        tensorboard_writer.add_scalar("Iteration Mean Reward", np.mean(rewards_), iter)
 
         return np.mean(losses)
