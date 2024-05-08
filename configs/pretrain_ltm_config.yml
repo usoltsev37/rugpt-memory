@@ -1,10 +1,10 @@
 checkpoint_base_cache_dir: /home/ybelova/repos/rugpt-memory/checkpoints/base/huggingface
-checkpoint_dir: /media/public/ybelova/rugpt-memory/checkpoints
-checkpoint_interval: 10
+checkpoint_dir: /media/public/ybelova/rugpt-memory/checkpoints/ltm_pretrain
+checkpoint_interval: 50
 content_dir: '.'
 experiment_name: base
-log_dir: /home/ybelova/repos/rugpt-memory/logs/runs/train_new/
-max_checkpoints: 5
+log_dir: /home/ybelova/repos/rugpt-memory/logs/runs/pretrain_ltm
+max_checkpoints: 3
 max_eval_steps: 32
 pretrained_model_name_or_path: ai-forever/rugpt3small_based_on_gpt2
 seed: 42   
