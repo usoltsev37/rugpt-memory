@@ -16,8 +16,8 @@ class ActionSampler(nn.Module):
         self.memory_type = memory_type
         self.dtype = dtype
 
-        # self.conv1 = nn.Conv1d(d_mem, d_mem * 4, kernel_size=4, padding="same")
-        # self.conv2 = nn.Conv1d(d_mem * 4, d_mem, kernel_size=4, padding="same")
+        self.conv1 = nn.Conv1d(d_mem, d_mem * 4, kernel_size=4, padding="same")
+        self.conv2 = nn.Conv1d(d_mem * 4, d_mem, kernel_size=4, padding="same")
 
         self.dense_inp = DenseNetwork(
             n_hid_layers=1,

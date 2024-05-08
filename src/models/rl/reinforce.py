@@ -136,24 +136,25 @@ class REINFORCE:
                 torch.clamp(ratio, 1 - self.clip, 1 + self.clip) * reward_batch,
             )
 
-            # loss -= self.alpha.item() * entropy
-            loss -= self.entropy_coef * entropy
+            loss -= self.alpha.item() * entropy
+            # if self.entropy_coef != 0:
+            #     loss -= self.entropy_coef * entropy
             loss = loss.mean()
             loss.backward()
             nn.utils.clip_grad_norm_(self.agent.parameters(), self.clip_grad_norm)
             self.optim.step()
             self.optim.zero_grad()
 
-            # alpha_loss = self.alpha * (entropy.detach() - self.target_entropy).mean()
-            # alpha_loss.backward()
-            # self.alpha_optimizer.step()
-            # self.alpha_optimizer.zero_grad()
+            alpha_loss = self.alpha * (entropy.detach() - self.target_entropy).mean()
+            alpha_loss.backward()
+            self.alpha_optimizer.step()
+            self.alpha_optimizer.zero_grad()
 
             losses.append(loss.item())
             entropies.append(entropy.mean().item())
             rew.append(reward_batch.mean().item())
 
-        # tensorboard_writer.add_scalar("Iteration alpha", self.alpha.item(), iter)
+        tensorboard_writer.add_scalar("Iteration alpha", self.alpha.item(), iter)
         tensorboard_writer.add_scalar("Iteration entropy", np.mean(entropies), iter)
         tensorboard_writer.add_scalar("Iteration mean reward", np.mean(rew), iter)
 

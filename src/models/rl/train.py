@@ -55,18 +55,7 @@ def sample_episodes(
     return compute_rewards(trajectories[:-1], train_config.gamma)  # There is no reward for the last step
 
 
-def train_rl(
-    data: list[dict],
-    agent: Agent,
-    optimizer: torch.optim,
-    ltm_model: LTM_GPT,
-    memory_module,
-    train_config: TrainingArguments,
-    alpha: torch.nn.parameter.Parameter,
-    alpha_optimizer: torch.optim.SGD,
-    logger,
-    pretrain_mode: bool = False,
-):
+def train_rl(data: list[dict], env, reinforce, train_config: TrainingArguments, tensorboard_writer, iter):
     """
     Training a memory model using reinforcement learning with a fixed LTM model.
     :param data: Training data from EpochDataloader
@@ -77,16 +66,7 @@ def train_rl(
     if data[0]["input_ids"].shape[0] != data[-1]["input_ids"].shape[0]:
         return None
 
-    agent.model.eval()
-    env = LTMEnvironment(
-        ltm_model,
-        memory_module,
-        num_prefixes_for_reward_calc=train_config.rl_params.num_prefixes_for_reward_calc,
-        pretrain_mode=pretrain_mode,
-    )
-    reinforce = REINFORCE(
-        agent, optimizer, train_config=train_config.rl_params, alpha=alpha, alpha_optimizer=alpha_optimizer
-    )
+    reinforce.agent.model.eval()
 
     transitions = []
 
@@ -94,8 +74,7 @@ def train_rl(
         batch_traj = sample_episodes(env, reinforce, batch, train_config.rl_params)
         transitions.extend(batch_traj)
 
-    agent.model.train()
-    mean_loss = reinforce.update(transitions, logger)
-    # tensorboard_writer.add_scalar("Loss/memory_model_train_iteration_loss", mean_loss)
+    reinforce.agent.model.train()
+    mean_loss = reinforce.update(transitions, tensorboard_writer, iter)
 
     return mean_loss

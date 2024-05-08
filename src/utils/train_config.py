@@ -15,6 +15,7 @@ class BaseModelParams:
 class LTMParams:
     cnt_blocks_with_memory: int
     device: str
+    step_length: int
 
 
 @dataclass
@@ -47,7 +48,6 @@ class RLParams:
 @dataclass
 class TrainerArgs:
     batch_size: int
-    step_length: int
     num_train_epochs: int
     ltm_clip_grad_norm: float
     ltm_learning_rate: float

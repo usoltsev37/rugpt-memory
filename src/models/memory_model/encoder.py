@@ -77,9 +77,9 @@ class EncoderBlock(nn.Module):
                 x,
                 x,
                 x,
-                # is_causal=True,
-                # attn_mask=attn_mask,
-                # key_padding_mask=key_padding_mask,
+                is_causal=True,
+                attn_mask=attn_mask,
+                key_padding_mask=key_padding_mask,
             )[0]
         )
         return x + self.mlp(self.ln_2(x))

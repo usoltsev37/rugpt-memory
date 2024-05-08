@@ -121,7 +121,7 @@ class LTMEnvironment:
 
 class PretrainEnv:
 
-    def __init__(self, ltm_model: LTM_GPT, memory_module: MemoryModule, episode_max_steps: int) -> None:
+    def __init__(self, ltm_model: LTM_GPT, memory_module: MemoryModule, episode_max_steps: int, args) -> None:
         self.attention_mask = None
         self.data = None
         self.embeddings = None
@@ -135,16 +135,18 @@ class PretrainEnv:
         self.step_length = ltm_model.step_length
         self.memory_module = memory_module
         self.episode_max_steps = episode_max_steps
-        self.transform_matrix = torch.eye((self.memory_module.d_mem))
         self.aggregate_fn = "min"
+        self.step_length = args.trainer_args.step_length
+        self.global_step = 0
+        self.transform_matrix = torch.eye((self.memory_module.d_mem))
         # self.transform_matrix = torch.randn((self.memory_module.d_mem, self.ltm_model.d_embd))  # [d_mem, d_embd]
         # self.transform_matrix = torch.ones((self.memory_module.d_mem, self.ltm_model.d_embd))
 
     def compute_dist(self, aggregate_fn: str = "min"):
         transformed_memory = self.memory_module.memory @ self.transform_matrix  # [num_vectors, d_embd]
         transformed_memory = transformed_memory.unsqueeze(2)
-        dists = torch.linalg.norm(transformed_memory - self.embeddings.unsqueeze(1).cpu(), dim=-1)
-        # dists = 1.0 - F.cosine_similarity(transformed_memory, self.embeddings.unsqueeze(1).cpu(), dim=-1)
+        # dists = torch.linalg.norm(transformed_memory - self.embeddings.unsqueeze(1).cpu(), dim=-1)
+        dists = 1.0 - F.cosine_similarity(transformed_memory, self.embeddings.unsqueeze(1).cpu(), dim=-1)
         if aggregate_fn == "min":
             return torch.min(dists, -1).values
         elif aggregate_fn == "max":
@@ -153,10 +155,12 @@ class PretrainEnv:
             return torch.mean(dists, -1)
 
     def reset(self, data: dict) -> State:
+        self.global_step += 1
 
         # Return embeddings
         bs, n_steps, _ = data["input_ids"].shape
         self.cur_step = 0
+        self.pos = [set() for _ in range(bs)]
 
         selected_step = random.randint(0, n_steps - 1)
         input_ids, attention_mask = (
@@ -169,8 +173,8 @@ class PretrainEnv:
 
         # Get embeddings for the first state
         # self.embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
-        d = Normal(loc=1.0, scale=1e-4)
-        self.embeddings = d.sample((bs, 32, 16))
+        d = Normal(loc=1.0, scale=0.1)
+        self.embeddings = d.sample((bs, self.step_length, self.memory_module.d_mem))
         self.embeddings = torch.ones_like(self.embeddings)
         self.attention_mask = torch.ones_like(attention_mask)
 
@@ -188,7 +192,13 @@ class PretrainEnv:
         self.memory_module.update(action=action)
 
         cur_dist = self.compute_dist(self.aggregate_fn).sum(-1)
-        reward = self.prev_dist - cur_dist
+        reward = 2 * (self.prev_dist - cur_dist)
+
+        if self.global_step < 1000:
+            for i, p in enumerate(action.positions):
+                if p.item() in self.pos[i]:
+                    reward[i] = -100
+                self.pos[i].add(p.item())
         self.prev_dist = cur_dist
 
         done = True if self.cur_step == self.episode_max_steps else False

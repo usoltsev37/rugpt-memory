@@ -38,17 +38,18 @@ def sample_episodes(env: PretrainEnv, reinforce: REINFORCE, data: dict, train_co
     done = False
     trajectories = []
     with torch.no_grad():
+        logger.info(state.memory)
         while not done:
             action, log_proba, distr = reinforce.act(state)  # cpu
-            logger.info(f"-")
-            logger.info(f"Positions: {action.positions}")
-            logger.info(f"Mean: {action.memory_vectors.mean()}")
-            logger.info(f"Std: {action.memory_vectors.std()}")
-            # tensorboard_writer.add_scalar("Mean", action.memory_vectors.mean(),)
+            logger.info(f"Positions: {action.positions[0]}")
+            logger.info(f"Mean: {action.memory_vectors[0, action.positions[0]].mean()}")
+            logger.info(f"Std: {action.memory_vectors[0, action.positions[0]].std()}")
             next_state, reward, done = env.step(action)  # cpu
-            logger.info(f"Reward: {reward.mean()}")
+            logger.info(next_state.memory[0])
+            logger.info(f"Reward: {reward[0]}")
             trajectories.append([state, action, reward, log_proba, distr])
             state = next_state
+            print("-" * 20)
     logger.info(">" * 50)
 
     reinforce.agent.model.train()
@@ -152,7 +153,7 @@ memory_module = MemoryModule(
     agent.model.dtype,
     agent.model.memory_type,
 )
-env = PretrainEnv(ltm_model, memory_module, episode_max_steps=args.pretrain_params.episode_max_steps)
+env = PretrainEnv(ltm_model, memory_module, episode_max_steps=args.pretrain_params.episode_max_steps, args=args)
 reinforce = REINFORCE(
     agent=agent, optimizer=rl_optimizer, train_config=args.rl_params, alpha=alpha, alpha_optimizer=alpha_optimizer
 )
@@ -166,7 +167,7 @@ train_dataset = WikiDataset(data_path=str(dataset_path), split="train")
 train_dataloader = EpochDataloader(
     dataset=train_dataset,
     tokenizer=tokenizer,
-    model_max_length=args.trainer_args.step_length,
+    step_length=args.trainer_args.step_length,
     batch_size=args.trainer_args.batch_size,
     shuffle=True,
     num_workers=2,

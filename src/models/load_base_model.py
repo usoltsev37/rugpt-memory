@@ -30,7 +30,7 @@ def load_base_model(main_config):
 
     model.d_mem = main_config.memory_model_params.d_mem
     model._dtype = dtype
-    model.step_length = main_config.trainer_args.step_length
+    model.step_length = main_config.ltm_params.step_length
     model.add_lora = main_config.base_model_params.add_lora
     tokenizer = AutoTokenizer.from_pretrained(main_config.pretrained_model_name_or_path)
     tokenizer.padding_side = "right"

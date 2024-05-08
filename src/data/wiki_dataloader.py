@@ -16,14 +16,14 @@ class EpochDataloader(DataLoader):
         self,
         dataset: WikiDataset,
         tokenizer: AutoTokenizer.from_pretrained,
-        model_max_length: int = 512,
+        step_length: int = 512,
         batch_size: int = 4,
         shuffle: bool = False,
         **kwargs
     ):
         self.iterator = None
         self.tokenizer = tokenizer
-        self.model_max_length = model_max_length
+        self.step_length = step_length
         super().__init__(dataset, batch_size, shuffle, collate_fn=self._collate_fn, **kwargs)
 
     def _collate_fn(self, batch: list[str]) -> dict:
@@ -33,10 +33,10 @@ class EpochDataloader(DataLoader):
         tokenized_batch["input_ids"] = tokenized_batch["input_ids"][:, :shortest_article_len]
         tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"][:, :shortest_article_len]
 
-        add_tokens_num = (self.model_max_length - shortest_article_len) % self.model_max_length
+        add_tokens_num = (self.step_length - shortest_article_len) % self.step_length
 
         if add_tokens_num:
-            if self.model_max_length - add_tokens_num == 1:
+            if self.step_length - add_tokens_num == 1:
                 tokenized_batch["input_ids"] = tokenized_batch["input_ids"][:, :-1]
                 tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"][:, :-1]
             else:
@@ -48,10 +48,8 @@ class EpochDataloader(DataLoader):
                 ).long()
 
         # Reshape to [batch_size, episode_len, len_seq_in_episode]
-        tokenized_batch["input_ids"] = tokenized_batch["input_ids"].view(len(batch), -1, self.model_max_length)
-        tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"].view(
-            len(batch), -1, self.model_max_length
-        )
+        tokenized_batch["input_ids"] = tokenized_batch["input_ids"].view(len(batch), -1, self.step_length)
+        tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"].view(len(batch), -1, self.step_length)
         return tokenized_batch
 
     def __iter__(self):

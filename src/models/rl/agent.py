@@ -20,6 +20,10 @@ class Agent(nn.Module):
         self.num_vectors = memory_model.num_vectors
         self.memory_type = memory_model.memory_type
         self.device = next(self.model.parameters()).device
+        self.sigma_denom = torch.e - 1 / torch.e
+        self.inv_exp = 1 / torch.e
+        self.sigma_lower = 0.0
+        self.sigma_upper = 0.3
 
     def _compute_log_probability(
         self, pos_distr: Categorical | Bernoulli, log_probability_normal_distr: torch.Tensor, positions: torch.Tensor
@@ -150,8 +154,12 @@ class Agent(nn.Module):
         pos_distr = pos_distr_cls(positions_param)
         positions = pos_distr.sample()
 
-        # Sample memory vectors from a normal distribution
         sigma = torch.exp(sigma)
+        # Sample memory vectors from a normal distribution
+        sigma = (torch.exp(sigma) - self.inv_exp) / self.sigma_denom
+        sigma *= self.sigma_upper - self.sigma_lower  # [0, sig_up - sig_low]
+        sigma += self.sigma_lower  # [sig_low, sig_up]
+
         normal_distr = Normal(mu, sigma)
         memory_vectors = normal_distr.sample()
 
@@ -180,6 +188,11 @@ class Agent(nn.Module):
         pos_distr = pos_distr_cls(positions_param)
 
         sigma = torch.exp(sigma)
+        # Sample memory vectors from a normal distribution
+        sigma = (torch.exp(sigma) - self.inv_exp) / self.sigma_denom
+        sigma *= self.sigma_upper - self.sigma_lower  # [0, sig_up - sig_low]
+        sigma += self.sigma_lower  # [sig_low, sig_up]
+
         normal_distr = Normal(mu, sigma)
         log_proba_normal_distr = normal_distr.log_prob(action.memory_vectors).sum(-1)
 

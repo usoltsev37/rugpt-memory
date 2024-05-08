@@ -1,15 +1,8 @@
-import argparse
-import datetime
 import itertools
 import logging
 import os
 import pickle
-import random
 import shutil
-import socket
-
-# torch.autograd.set_detect_anomaly(True)
-import subprocess
 from collections import deque
 from dataclasses import asdict
 from pathlib import Path
@@ -17,15 +10,10 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.optim
+from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 from transformers.trainer_pt_utils import get_model_param_count
 from transformers.trainer_utils import set_seed
-from transformers.utils import logging as tr_logging
-from src.utils.logger_singleton import ColourFormatter
-
-tr_logging.set_verbosity_error()
-
-from torch.utils.tensorboard import SummaryWriter
 
 from src.data.wiki_dataloader import EpochDataloader
 from src.data.wiki_dataset import WikiDataset
@@ -34,40 +22,13 @@ from src.models.ltm_gpt.ltm_gpt import LTM_GPT
 from src.models.memory_model.memory import MemoryModule
 from src.models.memory_model.memory_model import MemoryModel
 from src.models.rl.agent import Agent
+from src.models.rl.envs import LTMEnvironment
+from src.models.rl.reinforce import REINFORCE
 from src.models.rl.train import train_rl
 from src.models.rl.utils import State
-from src.utils.logger_singleton import logger
+from src.utils.logger_singleton import ColourFormatter, logger
 from src.utils.train_config import *
-
-# torch._logging.set_logs(dynamo=logging.DEBUG)
-# torch._dynamo.config.verbose = True
-
-import faulthandler
-
-faulthandler.enable()
-
-
-def create_dir_with_name(base_dir: str, name: str):
-
-    # Construct the directory path
-    dir = os.path.join(base_dir, name)
-
-    # Create the directory, including all intermediate directories
-    os.makedirs(dir, exist_ok=True)
-
-    return dir
-
-
-def create_name():
-    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    # Get the current hostname
-    hostname = socket.gethostname()
-    return f"{current_time}_{hostname}"
-
-
-def _crop_batch(input_ids: torch.Tensor, attention_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    crop_by_len = random.randint(2, input_ids.shape[1])
-    return input_ids[:, :crop_by_len], attention_mask[:, :crop_by_len]
+from src.utils.train_utils import create_dir_with_name, create_name, crop_batch, init_arguments
 
 
 class Trainer:
@@ -75,32 +36,28 @@ class Trainer:
         self,
         ltm_model: LTM_GPT,
         ltm_optimizer,
-        memory_model: MemoryModel,
-        memory_model_optimizer,
-        args,
-        train_dataset,
-        eval_dataset,
         tokenizer,
+        environment,
+        reinforce,
+        memory_module,
+        train_dataset,
+        val_dataset,
+        args,
     ):
         self.args = args
         self.ltm_model, self.ltm_optimizer = ltm_model, ltm_optimizer
+        self.memory_model = reinforce.agent.model
+        self.env = environment
+        self.reinforce = reinforce
+        self.memory_module = memory_module
 
-        self.memory_model, self.memory_model_optimizer = memory_model, memory_model_optimizer
-
-        self.agent = Agent(self.memory_model)
-        self.memory_module = MemoryModule(
-            self.agent.model.d_mem,
-            self.agent.model.num_vectors,
-            self.agent.model.dtype,
-            self.agent.model.memory_type,
-        )
         self.train_dataset = train_dataset
-        self.eval_dataset = eval_dataset
+        self.eval_dataset = val_dataset
         self.tokenizer = tokenizer
 
         self.eval_dataloader = self.get_eval_dataloader()
         self.train_dataloader = self.get_train_dataloader()
-        
+
         self.ltm_clip_grad_norm = args.trainer_args.ltm_clip_grad_norm
 
     def load_checkpoint(self, checkpoint_path: str):
@@ -125,11 +82,10 @@ class Trainer:
         return EpochDataloader(
             self.eval_dataset,
             self.tokenizer,
-            model_max_length=self.args.trainer_args.step_length,
-            max_sequence_len_in_batch=self.args.trainer_args.step_length * 100,
+            step_length=self.args.ltm_params.step_length,
             batch_size=self.args.trainer_args.batch_size,
             shuffle=False,
-            # num_workers=2,
+            num_workers=2,
             pin_memory=True,
         )
 
@@ -137,11 +93,10 @@ class Trainer:
         return EpochDataloader(
             self.train_dataset,
             self.tokenizer,
-            model_max_length=self.args.trainer_args.step_length,
-            max_sequence_len_in_batch=self.args.trainer_args.step_length * 100,
+            step_length=self.args.ltm_params.step_length,
             batch_size=self.args.trainer_args.batch_size,
             shuffle=True,
-            # num_workers=2,
+            num_workers=2,
             pin_memory=True,
         )
 
@@ -152,7 +107,7 @@ class Trainer:
         self.memory_module.reset(batch_size)
 
         for step in range(num_steps):
-            input_ids, attention_mask = _crop_batch(
+            input_ids, attention_mask = crop_batch(
                 data["input_ids"][:, step, :].contiguous(),
                 data["attention_mask"][:, step, :].contiguous(),
             )
@@ -170,7 +125,7 @@ class Trainer:
 
             # Get new memory vectors and update memory
             with torch.no_grad():
-                action, _, _ = self.agent.act(state)
+                action, _, _ = self.reinforce.agent.act(state)
 
             # Update memory
             self.memory_module.update(action)
@@ -196,57 +151,41 @@ class Trainer:
     def save_models(self, output_dir: Path) -> None:
         logger.info(f"Saving models checkpoints to {output_dir}")
 
-        ltm_state_dict = {k: v.cpu() for k, v in self.ltm_model.state_dict().items()}
-        memory_model_state_dict = {k: v.cpu() for k, v in self.memory_model.state_dict().items()}
+        torch.save(
+            {
+                "cycle": self.cycle,
+                "batch_step": self.batch_step,
+                "model_parameters": self.ltm_model.state_dict(),
+                "optimizer_state_dict": self.ltm_optimizer.state_dict(),
+            },
+            output_dir / "ltm.pt",
+        )
 
-        with open(str(output_dir / "ltm.pkl"), "wb") as f:
-            pickle.dump(
-                {
-                    "cycle": self.cycle,
-                    "batch_step": self.batch_step,
-                    "model_parameters": ltm_state_dict,
-                    "optimizer_state_dict": self.ltm_optimizer.state_dict(),
-                },
-                f,
-            )
+        torch.save(
+            {
+                "cycle": self.cycle,
+                "batch_step": self.batch_step,
+                "model_parameters": self.memory_model.state_dict(),
+                "optimizer_state_dict": self.reinforce.optim.state_dict(),
+            },
+            output_dir / "memory_model.pt",
+        )
 
-        with open(str(output_dir / "memory_model.pkl"), "wb") as f:
-            pickle.dump(
-                {
-                    "cycle": self.cycle,
-                    "batch_step": self.batch_step,
-                    "model_parameters": memory_model_state_dict,
-                    "optimizer_state_dict": self.memory_model_optimizer.state_dict(),
-                },
-                f,
-            )
-
-        # torch.save(
-        #     {
-        #         "cycle": self.cycle,
-        #         "batch_step": self.batch_step,
-        #         "model_parameters": self.ltm_model.state_dict(),
-        #         "optimizer_state_dict": self.ltm_optimizer.state_dict(),
-        #     },
-        # output_dir / "ltm.pt"
-        # )
-
-        # torch.save(
-        #     {
-        #         "cycle": self.cycle,
-        #         "batch_step": self.batch_step,
-        #         "model_parameters": self.memory_model.state_dict(),
-        #         "optimizer_state_dict": self.memory_model_optimizer.state_dict(),
-        #     },
-        #     output_dir / "memory_model.pt",
-        # )
+        torch.save(
+            {
+                "cycle": self.cycle,
+                "batch_step": self.batch_step,
+                "parameter": self.reinforce.alpha,
+            },
+            output_dir / "memory_model.pt",
+        )
 
     def save_checkpoint(self):
-        global run_dir
+        global checkpoint_dir
         global saved_checkpoints_queue
 
         checkpoint_folder = f"checkpoint-{self.cycle}"
-        output_dir = run_dir / checkpoint_folder
+        output_dir = checkpoint_dir / checkpoint_folder
         saved_checkpoints_queue.append(output_dir)
 
         if not os.path.exists(output_dir):
@@ -266,7 +205,7 @@ class Trainer:
         self.memory_module.reset(batch_size)
 
         for step in range(num_steps):
-            input_ids, attention_mask = _crop_batch(
+            input_ids, attention_mask = crop_batch(
                 data["input_ids"][:, step, :].contiguous(),
                 data["attention_mask"][:, step, :].contiguous(),
             )
@@ -274,9 +213,9 @@ class Trainer:
             loss, embeddings = self.ltm_model(input_ids, attention_mask, self.memory_module.memory)
 
             loss.backward()
-            
+
             nn.utils.clip_grad_norm_(self.ltm_model.parameters(), self.ltm_clip_grad_norm)
-            
+
             self.ltm_optimizer.step()
             self.ltm_optimizer.zero_grad()
 
@@ -291,51 +230,16 @@ class Trainer:
 
             # Get new memory vectors and update memory
             with torch.no_grad():
-                action, _, _ = self.agent.act(state)
+                action, _, _ = self.reinforce.agent.act(state)
 
             # Update memory
             self.memory_module.update(action)
 
         return episode_loss / num_steps
-        
-    def memory_model_pretrain(self,):
-        dataloader = self.train_dataloader.__iter__()
-        batch_buffer, num_transitions_in_buffer = [], 0
-        self.ltm_model.freeze()
-        self.memory_model.unfreeze()   
-        flaq = False
-        
-        for _ in range(self.args.rl_params.num_pretrain_steps):
-            while not flaq:
-                batch = next(dataloader)
-                bs, num_steps, _ = batch["input_ids"].shape
-                cur_transitions = bs * (num_steps - 1) 
-                if cur_transitions + num_transitions_in_buffer < self.args.rl_params.min_transitions_per_update:
-                    if cur_transitions:
-                        batch_buffer.append(batch)
-                        num_transitions_in_buffer += cur_transitions
-                else:
-                    batch_buffer.append(batch)
-                    memory_model_loss = train_rl(
-                        batch_buffer,
-                        self.agent,
-                        self.memory_model_optimizer,
-                        self.ltm_model,
-                        self.memory_module,
-                        self.args,
-                        logger,
-                        pretrain_mode=True
-                    )
-                    batch_buffer, num_transitions_in_buffer = [], 0
-                    flaq = True
-            logger.info(f"pretrain_memory_model_loss: {memory_model_loss}")
-
 
     def train(self, train_from_checkpoint: bool = False):
         global epoch
-        logger.info("Pretrain MemoryModel...")
-        self.memory_model_pretrain()
-        
+
         logger.info("Starting the training process...")
         logger.info(
             f"Number of trainable parameters (LTM) = {get_model_param_count(self.ltm_model, trainable_only=True)}"
@@ -351,12 +255,13 @@ class Trainer:
 
         # First training iterations on LTM model
         self.ltm_model.unfreeze()
-        self.agent.model.freeze()
+        self.reinforce.agent.model.freeze()
 
         is_ltm_training = True
         ltm_iteration_count, memory_iteration_count = 0, 0
         ltm_loss, memory_model_loss = 0.0, 0.0
         batch_buffer, num_transitions_in_buffer = [], 0
+        self.rl_steps = 0
 
         for batch in tqdm(self.train_dataloader, total=len(self.train_dataloader)):
             if train_from_checkpoint and batch < self.batch_to_start:
@@ -369,7 +274,7 @@ class Trainer:
                     ltm_iteration_count = 0
                     is_ltm_training = False
                     self.ltm_model.freeze()
-                    self.agent.model.unfreeze()
+                    self.reinforce.agent.model.unfreeze()
             else:
                 bs, num_steps, _ = batch["input_ids"].shape
                 cur_transitions = bs * (num_steps - 1)
@@ -380,17 +285,12 @@ class Trainer:
                 else:
                     batch_buffer.append(batch)
                     memory_model_loss += train_rl(
-                        batch_buffer,
-                        self.agent,
-                        self.memory_model_optimizer,
-                        self.ltm_model,
-                        self.memory_module,
-                        self.args,
-                        logger,
+                        batch_buffer, self.env, self.reinforce, self.args, tensorboard_writer, self.rl_steps
                     )
 
                     memory_iteration_count += 1
                     batch_buffer, num_transitions_in_buffer = [], 0
+                    self.rl_steps += 1
 
                     if memory_iteration_count >= memory_model_iterations:
                         memory_iteration_count = 0
@@ -420,111 +320,128 @@ class Trainer:
                         ltm_loss, memory_model_loss = 0.0, 0.0
 
                         self.ltm_model.unfreeze()
-                        self.agent.model.freeze()
+                        self.reinforce.agent.model.freeze()
 
             self.batch_step += 1
 
 
-def init_arguments() -> argparse.Namespace:
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(prog="train.py")
-    parser.add_argument("--config", type=str, required=True, help="Path to configuration file")
-    return parser.parse_args()
+if __name__ == "__main__":
 
+    ###############################################################################
+    # Parse arguments and create directories
+    ###############################################################################
+    args = init_arguments()
+    args = load_config(args.config)
+    set_seed(args.seed)
 
-def setup_logger_process():
-    global log_dir
-    return subprocess.Popen(["python3", "log_mem_usage.py", log_dir + "/memory.log"])
+    name_of_experiment = create_name()
 
+    # Checkpoints dir
+    checkpoint_dir = Path(create_dir_with_name(args.checkpoint_dir, name_of_experiment)) / "runs"
+    checkpoint_dir.mkdir(exist_ok=True)
+    saved_checkpoints_queue = deque()
 
-# global tensorboard_writer, saved_checkpoints_queue, run_dir, logger_process
-###############################################################################
-# Parse arguments and create directories
-###############################################################################
-args = init_arguments()
-args = load_config(args.config)
-set_seed(args.seed)
+    # Logs dir
+    log_dir = create_dir_with_name(args.log_dir, name_of_experiment)
+    log_file = log_dir + "/train.log"
 
-name = create_name()
+    # Save logs to file
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(ColourFormatter())
+    logger.addHandler(file_handler)
 
-run_dir = Path(create_dir_with_name(args.checkpoint_dir, name)) / "runs"
-if not os.path.exists(run_dir):
-    os.makedirs(run_dir)
+    # Tensorboard writer
+    tensorboard_writer = SummaryWriter(log_dir=log_dir)
 
-log_dir = create_dir_with_name(args.log_dir, name)
-log_file = log_dir + "/train.log"
-file_handler = logging.FileHandler(log_file)
-file_handler.setFormatter(ColourFormatter())
-logger.addHandler(file_handler)
+    # Save train config to log_dir
+    content_dir = Path(args.content_dir).resolve()
+    shutil.copy(content_dir / "configs" / "pretrain_agent_config.yml", log_dir)
 
-tensorboard_writer = SummaryWriter(log_dir=log_dir)
+    logger.info(f"Pretraining agent. We teach the agent to generate vectors similar to embeddings.")
+    logger.info(f"Experiment name: {args.experiment_name}")
+    logger.info(f"Checkpoints dir: {checkpoint_dir}")
+    logger.info(f"Log dir: {log_dir}")
 
-# PROCESS WILL CLOSE AFTER MAIN COMPLETION
-logger_process = setup_logger_process()
+    ###############################################################################
+    # Build the model
+    ###############################################################################
 
-# Save train config to log_dir
-content_dir = Path(args.content_dir).resolve()
-shutil.copy(content_dir / "configs" / "train_config.yml", log_dir)
+    ltm_model, tokenizer = load_ltm_model(args)
+    memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=ltm_model.dtype)
 
-logger.info(f"Experiment name: {args.experiment_name}")
-logger.info(f"Checkpoints dir: {run_dir}")
-logger.info(f"Log dir: {log_dir}")
+    ###############################################################################
+    # Create optimizers
+    ###############################################################################
 
-saved_checkpoints_queue = deque()
+    if args.trainer_args.optimizer.lower() == "sgd":
+        ltm_optimizer = torch.optim.SGD(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
+        rl_optimizer = torch.optim.SGD(
+            memory_model.parameters(),
+            lr=args.trainer_args.memory_model_learning_rate,
+        )
+    elif args.trainer_args.optimizer.lower() == "adam":
+        ltm_optimizer = torch.optim.Adam(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
+        rl_optimizer = torch.optim.Adam(
+            memory_model.parameters(),
+            lr=args.trainer_args.memory_model_learning_rate,
+        )
+    elif args.trainer_args.optimizer.lower() == "adamw":
+        ltm_optimizer = torch.optim.AdamW(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
+        rl_optimizer = torch.optim.AdamW(
+            memory_model.parameters(),
+            lr=args.trainer_args.memory_model_learning_rate,
+        )
 
-# try:
-###############################################################################
-# Load data
-###############################################################################
-dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
-train_dataset = WikiDataset(data_path=str(dataset_path), split="train")
-val_dataset = WikiDataset(data_path=str(dataset_path), split="val")
+    # Adaptive entropy coefficient
+    alpha = torch.nn.Parameter(torch.tensor(args.rl_params.alpha_start), requires_grad=True)
+    alpha_optimizer = torch.optim.SGD([alpha], lr=args.rl_params.alpha_lr)
 
-###############################################################################
-# Build the model
-###############################################################################
-
-ltm_model, tokenizer = load_ltm_model(args)
-memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=ltm_model.dtype)
-
-###############################################################################
-# Create optimizers
-###############################################################################
-
-if args.trainer_args.optimizer.lower() == "sgd":
-    ltm_optimizer = torch.optim.SGD(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
-    rl_optimizer = torch.optim.SGD(
-        memory_model.parameters(),
-        lr=args.trainer_args.memory_model_learning_rate,
+    agent = Agent(memory_model)
+    memory_module = MemoryModule(
+        agent.model.d_mem,
+        agent.model.num_vectors,
+        agent.model.dtype,
+        agent.model.memory_type,
     )
-elif args.trainer_args.optimizer.lower() == "adam":
-    ltm_optimizer = torch.optim.Adam(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
-    rl_optimizer = torch.optim.Adam(
-        memory_model.parameters(),
-        lr=args.trainer_args.memory_model_learning_rate,
+    env = LTMEnvironment(
+        ltm_model, memory_module, num_prefixes_for_reward_calc=args.rl_params.num_prefixes_for_reward_calc
     )
-elif args.trainer_args.optimizer.lower() == "adamw":
-    ltm_optimizer = torch.optim.AdamW(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
-    rl_optimizer = torch.optim.AdamW(
-        memory_model.parameters(),
-        lr=args.trainer_args.memory_model_learning_rate,
+    reinforce = REINFORCE(
+        agent=agent, optimizer=rl_optimizer, train_config=args.rl_params, alpha=alpha, alpha_optimizer=alpha_optimizer
     )
 
-###############################################################################
-# Train
-###############################################################################
+    ###############################################################################
+    # Load data
+    ###############################################################################
+    dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
+    train_dataset = WikiDataset(data_path=str(dataset_path), split="train")
+    val_dataset = WikiDataset(data_path=str(dataset_path), split="val")
 
-trainer = Trainer(ltm_model, ltm_optimizer, memory_model, rl_optimizer, args, train_dataset, val_dataset, tokenizer)
+    ###############################################################################
+    # Train
+    ###############################################################################
 
-try:
-    for epoch in itertools.count(start=1):  # epoch == traverse over train dataset once
-        trainer.train()
-        if epoch == args.trainer_args.num_train_epochs:
-            logger.info("-" * 100)
-            logger.info("End of training.")
-            break
-except (KeyboardInterrupt, Exception) as e:
-    logger.info("-" * 100)
-    logger.info("Exiting from training early")
-    logger.error(e)
-    logger_process.kill()
+    trainer = Trainer(
+        ltm_model=ltm_model,
+        ltm_optimizer=ltm_optimizer,
+        tokenizer=tokenizer,
+        environment=env,
+        reinforce=reinforce,
+        memory_module=memory_module,
+        train_dataset=train_dataset,
+        val_dataset=val_dataset,
+        args=args,
+    )
+
+    try:
+        for epoch in itertools.count(start=1):  # epoch == traverse over train dataset once
+            trainer.train()
+            if epoch == args.trainer_args.num_train_epochs:
+                logger.info("-" * 100)
+                logger.info("End of training.")
+                break
+    except (KeyboardInterrupt, Exception) as e:
+        logger.info("-" * 100)
+        logger.info("Exiting from training early")
+        logger.error(e)
+        logger_process.kill()
