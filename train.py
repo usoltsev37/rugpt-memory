@@ -444,4 +444,3 @@ if __name__ == "__main__":
         logger.info("-" * 100)
         logger.info("Exiting from training early")
         logger.error(e)
-        logger_process.kill()
