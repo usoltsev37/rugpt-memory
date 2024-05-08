@@ -136,9 +136,8 @@ class REINFORCE:
                 torch.clamp(ratio, 1 - self.clip, 1 + self.clip) * reward_batch,
             )
 
-            loss -= self.alpha.item() * entropy
-            # if self.entropy_coef != 0:
-            #     loss -= self.entropy_coef * entropy
+            loss -= torch.exp(self.alpha.item()) * entropy
+
             loss = loss.mean()
             loss.backward()
             nn.utils.clip_grad_norm_(self.agent.parameters(), self.clip_grad_norm)
