@@ -177,7 +177,7 @@ class Trainer:
                 "batch_step": self.batch_step,
                 "parameter": self.reinforce.alpha,
             },
-            output_dir / "memory_model.pt",
+            output_dir / "alpha.pt",
         )
 
     def save_checkpoint(self):

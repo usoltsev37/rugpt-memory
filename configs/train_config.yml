@@ -2,7 +2,7 @@ checkpoint_base_cache_dir: /home/ybelova/repos/rugpt-memory/checkpoints/base/hug
 checkpoint_dir: /media/public/ybelova/rugpt-memory/checkpoints
 checkpoint_interval: 10
 content_dir: '.'
-experiment_name: test
+experiment_name: base
 log_dir: /home/ybelova/repos/rugpt-memory/logs/runs/train_new/
 max_checkpoints: 5
 max_eval_steps: 32
@@ -24,11 +24,11 @@ memory_model_params:
 
 trainer_args:
   batch_size: 16
-  num_train_epochs: 1
+  num_train_epochs: 2
   ltm_clip_grad_norm: 1.0
-  ltm_learning_rate: 2e-5
+  ltm_learning_rate: 5e-5
   ltm_model_iterations: 40
-  memory_model_learning_rate: 2e-5
+  memory_model_learning_rate: 5e-5
   memory_model_iterations: 40
   optimizer: adamw   
   torch_dtype: float32
