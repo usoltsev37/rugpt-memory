@@ -7,6 +7,7 @@ from pathlib import Path
 
 import torch
 import torch.optim
+import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 from transformers.trainer_utils import set_seed
@@ -24,6 +25,8 @@ from src.utils.logger_singleton import ColourFormatter, logger
 from src.utils.pretrain_agent_config import load_config
 from src.utils.train_utils import create_dir_with_name, init_arguments
 
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import copy
 
 def evaluate(env, reinforce, args, train_dataloader, val_dataloader):
     pass
@@ -38,7 +41,7 @@ def sample_episodes(env: PretrainEnv, reinforce: REINFORCE, data: dict, train_co
     done = False
     trajectories = []
     with torch.no_grad():
-        logger.info(state.memory)
+        logger.info(state.memory[0])
         while not done:
             action, log_proba, distr = reinforce.act(state)  # cpu
             logger.info(f"Positions: {action.positions[0]}")
@@ -60,7 +63,7 @@ def pretrain(env, reinforce, args, train_dataloader):
     logger.info("Start Memory Model pretraining...")
 
     # Train only memory model
-    ltm_model.freeze()
+    # ltm_model.freeze()
     memory_model.unfreeze()
 
     iterations_num = (
@@ -70,6 +73,7 @@ def pretrain(env, reinforce, args, train_dataloader):
     )
     batch_buffer, num_transitions_in_buffer = [], 0
     cur_transitions = args.pretrain_params.episode_max_steps * args.trainer_args.batch_size
+    # old_params = copy.deepcopy(reinforce.agent.model.state_dict())
     for cur_iter, batch in enumerate(tqdm(train_dataloader, total=iterations_num)):
         if cur_transitions + num_transitions_in_buffer < args.rl_params.min_transitions_per_update:
             batch_buffer.append(batch)
@@ -83,8 +87,14 @@ def pretrain(env, reinforce, args, train_dataloader):
             tensorboard_writer.add_scalar("Iteration mean loss", mean_loss, cur_iter)
             batch_buffer, num_transitions_in_buffer = [], 0
 
-            if cur_iter == iterations_num:
-                break
+        if cur_iter == iterations_num:
+            break
+            # np = reinforce.agent.model.state_dict() 
+            # for n, p in np.items():
+            #     op = old_params[n]
+            #     if (op.data == p.data).all():
+            #         print(f"Not changed: {n}") 
+            
 
     logger.info("Memory model pretraining done!")
 
@@ -98,9 +108,9 @@ args = load_config(args.config)
 set_seed(args.seed)
 
 # Checkpoints dir
-checkpoint_dir = Path(create_dir_with_name(args.checkpoint_dir, args.experiment_name)) / "runs"
-checkpoint_dir.mkdir(exist_ok=True)
-saved_checkpoints_queue = deque()
+# checkpoint_dir = Path(create_dir_with_name(args.checkpoint_dir, args.experiment_name)) / "runs"
+# checkpoint_dir.mkdir(exist_ok=True)
+# saved_checkpoints_queue = deque()
 
 # Logs dir
 log_dir = create_dir_with_name(args.log_dir, args.experiment_name)
@@ -120,7 +130,7 @@ shutil.copy(content_dir / "configs" / "pretrain_agent_config.yml", log_dir)
 
 logger.info(f"Pretraining agent. We teach the agent to generate vectors similar to embeddings.")
 logger.info(f"Experiment name: {args.experiment_name}")
-logger.info(f"Checkpoints dir: {checkpoint_dir}")
+# logger.info(f"Checkpoints dir: {checkpoint_dir}")
 logger.info(f"Log dir: {log_dir}")
 
 
@@ -128,8 +138,13 @@ logger.info(f"Log dir: {log_dir}")
 # Build the model and set up environment
 ###############################################################################
 
-ltm_model, tokenizer = load_ltm_model(args)
-memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=ltm_model.dtype)
+# ltm_model, tokenizer = load_ltm_model(args)
+ltm_model = nn.Linear(5, 5)
+tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model_name_or_path)
+tokenizer.padding_side = "right"
+
+# memory_model = SyntheticTaskModel(num_vectors = args.memory_model_params.num_vectors, d_mem = args.memory_model_params.d_mem, memory_type="conservative").to("cuda:0")
+memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=torch.float32)
 
 # Memory Model optimizer
 rl_optimizer = torch.optim.AdamW(

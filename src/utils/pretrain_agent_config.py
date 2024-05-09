@@ -21,6 +21,7 @@ class TrainingArguments:
     content_dir: str
     eval_interval: int
     experiment_name: str
+    description: str
     log_dir: str
     ltm_params: LTMParams
     max_checkpoints: int

@@ -355,9 +355,8 @@ if __name__ == "__main__":
 
     # Save train config to log_dir
     content_dir = Path(args.content_dir).resolve()
-    shutil.copy(content_dir / "configs" / "pretrain_agent_config.yml", log_dir)
-
-    logger.info(f"Start training...")
+    shutil.copy(content_dir / "configs" / "train_config.yml", log_dir)
+    logger.info(f"Start training..configs/train_config.yml.")
     logger.info(f"Experiment name: {args.experiment_name}")
     logger.info(f"Checkpoints dir: {checkpoint_dir}")
     logger.info(f"Log dir: {log_dir}")

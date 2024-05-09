@@ -32,7 +32,6 @@ class MemoryModule:
         self.batch_size = batch_size
         if self.memory is None or self.memory.shape[0] != batch_size:
             self.memory = torch.zeros(batch_size, self.num_vectors, self.d_mem)
-            # self.memory = torch.zeros(batch_size, self.num_vectors, self.d_embd)
         else:
             self.memory.zero_()
             

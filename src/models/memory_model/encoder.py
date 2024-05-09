@@ -21,7 +21,6 @@ class Encoder(nn.Module):
         """
         super().__init__()
         self.blocks = get_clones(block, n_block)
-        self.ln_out = nn.LayerNorm(block.d_embd)
 
     def forward(self, hidden_states: torch.tensor, attention_mask: torch.Tensor) -> torch.tensor:
         """
@@ -31,7 +30,7 @@ class Encoder(nn.Module):
         """
         for block in self.blocks:
             hidden_states = block(hidden_states, attention_mask)
-        return self.ln_out(hidden_states)
+        return hidden_states
 
 
 class EncoderBlock(nn.Module):

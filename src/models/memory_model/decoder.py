@@ -23,7 +23,7 @@ class Decoder(nn.Module):
         """
         super().__init__()
         self.blocks = get_clones(block, n_block)
-        self.ln_out = nn.LayerNorm(block.d_mem)
+        # self.ln_out = nn.LayerNorm(block.d_mem)
 
     def forward(
         self,
@@ -39,7 +39,8 @@ class Decoder(nn.Module):
         """
         for block in self.blocks:
             memory = block(memory, embeddings, attention_mask)
-        return self.ln_out(memory)
+        return memory
+        # return self.ln_out(memory)
 
 
 class DecoderBlock(nn.Module):

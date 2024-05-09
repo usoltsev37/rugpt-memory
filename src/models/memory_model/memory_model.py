@@ -76,36 +76,32 @@ class MemoryModel(torch.nn.Module):
 class SyntheticTaskModel(torch.nn.Module):
     def __init__(self, num_vectors: int, d_mem: int, memory_type: str):
         super().__init__()
-        self.d_embd = 16
+        self.d_embd = d_mem
         self.d_mem = d_mem
         self.num_vectors = num_vectors
         self.memory_type = memory_type
-        self.device = torch.device("cuda:1")
+        self.device = torch.device("cuda:0")
         self.dtype = torch.float32
-        self.fc1 = nn.Linear(d_mem, d_mem * 4)
+        self.fc1 = nn.Linear(d_mem, d_mem)
         self.conv1 = nn.Conv1d(d_mem, d_mem * 4, kernel_size=num_vectors, padding="same")
         self.conv2 = nn.Conv1d(d_mem * 4, d_mem, kernel_size=num_vectors, padding="same")
-        self.fc2 = nn.Linear(d_mem * 4, 1)
-        # self.fc3 = nn.Linear(d_mem, d_mem * 2)
-        self.fcc = nn.Linear(self.num_vectors, self.num_vectors)
-
+        self.fc2 = nn.Linear(d_mem, 1)
+        self.fc3 = nn.Linear(d_mem, d_mem)
+        self.fc4 = nn.Linear(d_mem, d_mem)
         self.to(self.device)
 
     def forward(self, x: State) -> tuple[torch.Tensor, torch.Tensor]:
-        mem = x.memory.to(torch.device("cuda:1"))
-        # print(mem)
+        mem = x.memory.to(torch.device("cuda:0"))
         x = F.relu(self.fc1(mem))
-        # print("first_linear", x)
-
         x = x.permute(0, 2, 1)
-        # x = F.relu(self.conv1(x))
-        # x = F.relu(self.conv2(x))
-        x = self.fcc(x)
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
         x = x.permute(0, 2, 1)
         out1 = self.fc2(x)
-        # print("second_linear", out1)
-        mu_distr = torch.ones(mem.shape).to(mem.device)
-        sigma_distr = torch.full(mem.shape, -10).to(mem.device)
+        mu_distr = self.fc3(x)
+        # sigma_distr = 2 * (torch.tanh(self.fc4(x)) - 1) 
+        sigma_distr = self.fc4(x) 
+        
 
         positions = None
         if self.memory_type == "conservative":
@@ -113,11 +109,6 @@ class SyntheticTaskModel(torch.nn.Module):
         elif self.memory_type == "flexible":
             positions = F.sigmoid(out1.squeeze(dim=-1))  # [batch_size, num_vectors]
 
-        # print("after softmax", positions)
-        # print()
-        # time.sleep(30)
-        # print()
-        # print(positions[:, 0].mean())
         return positions.float(), mu_distr, sigma_distr
 
     def freeze(self) -> None:

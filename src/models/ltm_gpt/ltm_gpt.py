@@ -110,7 +110,6 @@ class LTM_GPT(nn.Module):
         for p in self.transformer_ltm_blocks.parameters():
             p.requires_grad = False
             
-/home/akarpov/jbelova/rugpt-memory/
 
     def unfreeze(self) -> None:
         self.train()

@@ -40,6 +40,10 @@ class Agent(nn.Module):
         if self.memory_type == "conservative":
             a_i = F.one_hot(a_i, self.num_vectors)
             log_probs = log_p_i + log_q_i
+            
+            #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+            # log_probs = log_p_i
+            
             masked_log_probs = log_probs * a_i
             return torch.sum(masked_log_probs, dim=-1)
         elif self.memory_type == "flexible":
@@ -61,6 +65,8 @@ class Agent(nn.Module):
         if self.memory_type == "conservative":
             cat_entropy = pos_distr.entropy()
             return cat_entropy + (pos_distr.probs * normal_entropy).sum(-1)
+            #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+            # return cat_entropy
         elif self.memory_type == "flexible":
             bernoulli_entropy = pos_distr.entropy()
             return bernoulli_entropy.sum(-1) + (pos_distr.probs * normal_entropy).sum(-1)

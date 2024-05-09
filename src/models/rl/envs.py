@@ -132,7 +132,6 @@ class PretrainEnv:
         self.prev_dist = None
 
         self.ltm_model = ltm_model
-        self.step_length = ltm_model.step_length
         self.memory_module = memory_module
         self.episode_max_steps = episode_max_steps
         self.aggregate_fn = "min"
@@ -181,9 +180,12 @@ class PretrainEnv:
         self.memory_module.reset(bs)
         self.prev_dist = self.compute_dist(self.aggregate_fn).sum(-1)
 
+        # Dummy reward
+        self.pos = [set() for _ in range(bs)]
+        
         return State(
             self.memory_module.memory,
-            self.embeddings.detach(),
+            self.embeddings,
             self.attention_mask,
         )
 
@@ -191,9 +193,21 @@ class PretrainEnv:
         self.cur_step += 1
         self.memory_module.update(action=action)
 
-        cur_dist = self.compute_dist(self.aggregate_fn).sum(-1)
-        reward = self.prev_dist - cur_dist
-        self.prev_dist = cur_dist
+        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<,
+        reward = torch.zeros_like(action.positions).to(torch.float32)
+        for i, pos in enumerate(action.positions):
+            if pos.item() in self.pos[i]:
+                reward[i] = -5
+            self.pos[i].add(pos.item())
+        
+        bs = action.positions.shape[0]
+        chosen_vectors = action.memory_vectors[torch.arange(bs), action.positions]
+        reward -= torch.sum((chosen_vectors - 1.).pow(2.), dim=-1)
+        # reward -= torch.var(chosen_vectors, dim=-1) * 10.
+        
+        # cur_dist = self.compute_dist(self.aggregate_fn).sum(-1)
+        # reward = self.prev_dist - cur_dist
+        # self.prev_dist = cur_dist
 
         done = True if self.cur_step == self.episode_max_steps else False
         return (State(self.memory_module.memory, self.embeddings, self.attention_mask), reward, done)
