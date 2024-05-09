@@ -22,24 +22,32 @@ from src.utils.train_config import load_config
 from src.utils.train_utils import create_dir_with_name, init_arguments, crop_batch
 
 
-def save_models(self, output_dir: Path) -> None:
+def save_models(output_dir: Path) -> None:
     logger.info(f"Saving models checkpoints to {output_dir}")
 
     torch.save(
         {
-            "cycle": self.cycle,
-            "batch_step": self.batch_step,
-            "model_parameters": self.ltm_model.state_dict(),
-            "optimizer_state_dict": self.ltm_optimizer.state_dict(),
-        },
+            "cur_iter": cur_iter,
+            "model_parameters": ltm_model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict()},
+        
         output_dir / "ltm.pt",
     )
 
 
-def save_checkpoint(self):
+def save_checkpoint(val_loss):
     global checkpoint_dir
     global saved_checkpoints_queue
-
+    global best_val_loss
+    
+    if val_loss < best_val_loss:
+        best_val_loss = val_loss
+        checkpoint_folder = f"best_model"
+        output_dir = checkpoint_dir / checkpoint_folder
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        save_models(output_dir)
+        
     checkpoint_folder = f"checkpoint-{cur_iter}"
     output_dir = checkpoint_dir / checkpoint_folder
     saved_checkpoints_queue.append(output_dir)
@@ -49,12 +57,12 @@ def save_checkpoint(self):
 
     save_models(output_dir)
 
-    if len(saved_checkpoints_queue) > self.args.max_checkpoints:
+    if len(saved_checkpoints_queue) > args.max_checkpoints:
         oldest_checkpoint = saved_checkpoints_queue.popleft()
         shutil.rmtree(oldest_checkpoint)
 
 
-def _evaluate(self, data: dict) -> torch.Tensor:
+def _evaluate(data: dict) -> torch.Tensor:
     batch_size, num_steps, _ = data["input_ids"].size()
     episode_loss = 0.0
 
@@ -66,7 +74,7 @@ def _evaluate(self, data: dict) -> torch.Tensor:
             data["attention_mask"][:, step, :].contiguous(),
         )
 
-        loss, embeddings = self.ltm_model(input_ids, attention_mask, memory_module.memory)
+        loss, embeddings = ltm_model(input_ids, attention_mask, memory_module.memory)
 
         if step != 0:
             episode_loss += loss.item()
@@ -93,7 +101,6 @@ def evaluate(val_dataloader, ltm_model):
 
 
 def train_ltm_on_episode(ltm_model, ltm_optimizer, memory_module, data: dict, ltm_clip_grad_norm) -> float:
-
     episode_loss = 0.0
     batch_size, num_steps, _ = data["input_ids"].size()
 
@@ -114,18 +121,18 @@ def train_ltm_on_episode(ltm_model, ltm_optimizer, memory_module, data: dict, lt
             episode_loss += loss.item()
 
         ltm_optimizer.zero_grad()
-
-        # Update memory
         memory_module.update_on_pretrain(embeddings)
 
     return episode_loss / (num_steps - 1)
 
-
+import copy
 def pretrain(ltm_model, ltm_optimizer, memory_module, train_dataloader, val_dataloader, args):
     logger.info("Start LTM pretraining...")
-
     global cur_iter
-    for cur_iter, batch in enumerate(tqdm(train_dataloader, total=len(train_dataloader))):
+    global best_val_loss
+    best_val_loss = 1e6
+    
+    for cur_iter, batch in enumerate(tqdm(train_dataloader, total=len(train_dataloader)), start=1):
         if batch["input_ids"].shape[1] < 2:
             continue
         ltm_loss = train_ltm_on_episode(
@@ -137,12 +144,9 @@ def pretrain(ltm_model, ltm_optimizer, memory_module, train_dataloader, val_data
         if not cur_iter % 50:
             ltm_val_loss = evaluate(val_dataloader=val_dataloader, ltm_model=ltm_model)
             ltm_model.unfreeze()
-
-        if not cur_iter % args.checkpoint_interval:
-            save_checkpoint()
-
-        logger.info(f"""Evaluation on {cur_iter} done.\nLTM val loss: {ltm_loss}""")
-        tensorboard_writer.add_scalar("Loss/LTM val loss", ltm_val_loss, cur_iter)
+            logger.info(f"""Evaluation on {cur_iter} done.\nLTM val loss: {ltm_loss}""")
+            tensorboard_writer.add_scalar("Loss/LTM val loss", ltm_val_loss, cur_iter)
+            save_checkpoint(ltm_val_loss)
 
     logger.info("LTM model pretraining done!")
 
@@ -190,19 +194,14 @@ logger.info(f"Log dir: {log_dir}")
 
 ltm_model, tokenizer = load_ltm_model(args)
 ltm_model.unfreeze()
-ltm_model.transform_matrix = torch.nn.Parameter(
-    torch.randn((args.memory_model_params.d_embd, args.memory_model_params.d_mem)), requires_grad=True
-)
 optimizer = AdamW(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
 
 global memory_module
 memory_module = MemoryModule(
     args.memory_model_params.d_mem,
     args.memory_model_params.num_vectors,
-    args.memory_model_params.dtype,
-    ltm_model.transform_matrix,
-    args.memory_model_params.memory_type,
-    pretrain=True,
+    torch.float32,
+    args.memory_model_params.memory_type
 )
 ###############################################################################
 # Load data

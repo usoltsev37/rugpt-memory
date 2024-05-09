@@ -357,7 +357,7 @@ if __name__ == "__main__":
     content_dir = Path(args.content_dir).resolve()
     shutil.copy(content_dir / "configs" / "pretrain_agent_config.yml", log_dir)
 
-    logger.info(f"Pretraining agent. We teach the agent to generate vectors similar to embeddings.")
+    logger.info(f"Start training...")
     logger.info(f"Experiment name: {args.experiment_name}")
     logger.info(f"Checkpoints dir: {checkpoint_dir}")
     logger.info(f"Log dir: {log_dir}")
@@ -367,6 +367,12 @@ if __name__ == "__main__":
     ###############################################################################
 
     ltm_model, tokenizer = load_ltm_model(args)
+    checkpoint = '/home/akarpov/jbelova/rugpt-memory/checkpoints/ltm_pretrain/base/runs/checkpoint-36450/ltm.pt'
+    state_dict = torch.load(checkpoint)["model_parameters"]
+    ltm_model.load_state_dict(state_dict)
+    for p in ltm_model.transform_matrix.parameters():
+        p.requires_grad = False
+    logger.info("Reloaded weigths for pretrained LTM!")
     memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=ltm_model.dtype)
 
     ###############################################################################
