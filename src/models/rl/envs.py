@@ -194,20 +194,20 @@ class PretrainEnv:
         self.memory_module.update(action=action)
 
         # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<,
-        reward = torch.zeros_like(action.positions).to(torch.float32)
-        for i, pos in enumerate(action.positions):
-            if pos.item() in self.pos[i]:
-                reward[i] = -5
-            self.pos[i].add(pos.item())
+        # reward = torch.zeros_like(action.positions).to(torch.float32)
+        # for i, pos in enumerate(action.positions):
+        #     if pos.item() in self.pos[i]:
+        #         reward[i] = -5
+        #     self.pos[i].add(pos.item())
         
-        bs = action.positions.shape[0]
-        chosen_vectors = action.memory_vectors[torch.arange(bs), action.positions]
-        reward -= torch.sum((chosen_vectors - 1.).pow(2.), dim=-1)
-        # reward -= torch.var(chosen_vectors, dim=-1) * 10.
+        # bs = action.positions.shape[0]
+        # chosen_vectors = action.memory_vectors[torch.arange(bs), action.positions]
+        # reward -= torch.sum((chosen_vectors - 1.).pow(2.), dim=-1)
+        # # reward -= torch.var(chosen_vectors, dim=-1) * 10.
         
-        # cur_dist = self.compute_dist(self.aggregate_fn).sum(-1)
-        # reward = self.prev_dist - cur_dist
-        # self.prev_dist = cur_dist
+        cur_dist = self.compute_dist(self.aggregate_fn).sum(-1)
+        reward = (0.97 ** (self.cur_step)) * (self.prev_dist - cur_dist)
+        self.prev_dist = cur_dist
 
         done = True if self.cur_step == self.episode_max_steps else False
         return (State(self.memory_module.memory, self.embeddings, self.attention_mask), reward, done)

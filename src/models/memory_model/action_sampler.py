@@ -50,8 +50,8 @@ class ActionSampler(nn.Module):
 
         pos_distr = self.dense_pos_distr(memory)  # [batch, mem_size, 1]
         mu_distr = self.dense_norm_mu(memory)  # [batch, num_vectors, d_mem]
-        # sigma_distr = 2 * (torch.tanh(self.dense_norm_sigma(memory)) - 1)  # [batch, num_vectors, d_mem]
-        sigma_distr = self.dense_norm_sigma(memory)  # [batch, num_vectors, d_mem]
+        sigma_distr = 2 * (torch.tanh(self.dense_norm_sigma(memory)) - 1)  # [batch, num_vectors, d_mem]
+        # sigma_distr = self.dense_norm_sigma(memory)  # [batch, num_vectors, d_mem]
 
         positions = None
         if self.memory_type == "conservative":

@@ -65,6 +65,7 @@ class TrainingArguments:
     checkpoint_interval: int
     content_dir: str
     experiment_name: str
+    description: str
     log_dir: str
     ltm_params: LTMParams
     max_checkpoints: int
