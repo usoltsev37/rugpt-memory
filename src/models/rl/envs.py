@@ -137,14 +137,16 @@ class PretrainEnv:
         self.aggregate_fn = "min"
         self.step_length = args.ltm_params.step_length
         self.global_step = 0
-        self.transform_matrix = torch.eye((self.memory_module.d_mem))
-        # self.transform_matrix = torch.randn((self.memory_module.d_mem, self.ltm_model.d_embd))  # [d_mem, d_embd]
+        # self.transform_matrix = torch.eye((self.memory_module.d_mem))
+        self.transform_matrix = torch.randn((self.ltm_model.d_embd, self.memory_module.d_mem))  # [d_mem, d_embd]
         # self.transform_matrix = torch.ones((self.memory_module.d_mem, self.ltm_model.d_embd))
 
     def compute_dist(self, aggregate_fn: str = "min"):
-        transformed_memory = self.memory_module.memory @ self.transform_matrix  # [num_vectors, d_embd]
-        transformed_memory = transformed_memory.unsqueeze(2)
-        dists = torch.linalg.norm(transformed_memory - self.embeddings.unsqueeze(1).cpu(), dim=-1)
+        with torch.no_grad():
+            # transformed_memory = self.memory_module.memory @ self.transform_matrix  # [num_vectors, d_embd]
+            transformed_memory = self.memory_module.memory  # [num_vectors, d_embd]
+            transformed_memory = transformed_memory.unsqueeze(2)
+            dists = torch.linalg.norm(transformed_memory - (self.embeddings @ self.transform_matrix.to("cuda:0")).unsqueeze(1).cpu(), dim=-1)
         # dists = 1.0 - F.cosine_similarity(transformed_memory, self.embeddings.unsqueeze(1).cpu(), dim=-1)
         if aggregate_fn == "min":
             return torch.min(dists, -1).values
@@ -171,10 +173,11 @@ class PretrainEnv:
         # self.attention_mask = attention_mask
 
         # Get embeddings for the first state
-        # self.embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask)
-        d = Normal(loc=1.0, scale=0.1)
-        self.embeddings = d.sample((bs, self.step_length, self.memory_module.d_mem))
-        self.embeddings = torch.ones_like(self.embeddings)
+        with torch.no_grad():
+            self.embeddings = self.ltm_model.get_embeddings(input_ids, attention_mask).to("cuda:0")
+        # d = Normal(loc=1.0, scale=0.1)
+        # self.embeddings = d.sample((bs, self.step_length, self.memory_module.d_mem))
+        # self.embeddings = torch.ones_like(self.embeddings)
         self.attention_mask = torch.ones_like(attention_mask)
 
         self.memory_module.reset(bs)
@@ -206,7 +209,7 @@ class PretrainEnv:
         # # reward -= torch.var(chosen_vectors, dim=-1) * 10.
         
         cur_dist = self.compute_dist(self.aggregate_fn).sum(-1)
-        reward = (0.97 ** (self.cur_step)) * (self.prev_dist - cur_dist)
+        reward =  (self.prev_dist - cur_dist)
         self.prev_dist = cur_dist
 
         done = True if self.cur_step == self.episode_max_steps else False

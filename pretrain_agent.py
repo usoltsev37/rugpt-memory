@@ -34,6 +34,32 @@ def evaluate(env, reinforce, args, train_dataloader, val_dataloader):
 
 import time
 
+def save_models(output_dir: Path) -> None:
+    logger.info(f"Saving models checkpoints to {output_dir}")
+
+    torch.save(
+        {"model_parameters": reinforce.agent.model.state_dict()},
+        output_dir / "memory_model.pt",
+    )
+
+
+def save_checkpoint(cur_iter):
+    global checkpoint_dir
+    global saved_checkpoints_queue
+        
+    checkpoint_folder = f"checkpoint-{cur_iter}"
+    output_dir = checkpoint_dir / checkpoint_folder
+    saved_checkpoints_queue.append(output_dir)
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    save_models(output_dir)
+
+    if len(saved_checkpoints_queue) > args.max_checkpoints:
+        oldest_checkpoint = saved_checkpoints_queue.popleft()
+        shutil.rmtree(oldest_checkpoint)
+        
 
 def sample_episodes(env: PretrainEnv, reinforce: REINFORCE, data: dict, train_config) -> list[tuple]:
     reinforce.agent.model.eval()
@@ -41,14 +67,14 @@ def sample_episodes(env: PretrainEnv, reinforce: REINFORCE, data: dict, train_co
     done = False
     trajectories = []
     with torch.no_grad():
-        logger.info(state.memory[0])
+        # logger.info(state.memory[0])
         while not done:
             action, log_proba, distr = reinforce.act(state)  # cpu
             logger.info(f"Positions: {action.positions[0]}")
             logger.info(f"Mean: {action.memory_vectors[0, action.positions[0]].mean()}")
             logger.info(f"Std: {action.memory_vectors[0, action.positions[0]].std()}")
             next_state, reward, done = env.step(action)  # cpu
-            logger.info(next_state.memory[0])
+            # logger.info(next_state.memory[0])
             logger.info(f"Reward: {reward[0]}")
             trajectories.append([state, action, reward, log_proba, distr])
             state = next_state
@@ -63,7 +89,7 @@ def pretrain(env, reinforce, args, train_dataloader):
     logger.info("Start Memory Model pretraining...")
 
     # Train only memory model
-    # ltm_model.freeze()
+    ltm_model.freeze()
     memory_model.unfreeze()
 
     iterations_num = (
@@ -86,7 +112,11 @@ def pretrain(env, reinforce, args, train_dataloader):
             mean_loss = reinforce.update(transitions, tensorboard_writer, cur_iter)
             tensorboard_writer.add_scalar("Iteration mean loss", mean_loss, cur_iter)
             batch_buffer, num_transitions_in_buffer = [], 0
-
+            # env.transform_matrix = memory_model.decoder.blocks[0].dense_network_for_embeddings
+        
+        if not cur_iter % 20:
+            save_checkpoint(cur_iter) 
+            
         if cur_iter == iterations_num:
             break
             # np = reinforce.agent.model.state_dict() 
@@ -108,9 +138,9 @@ args = load_config(args.config)
 set_seed(args.seed)
 
 # Checkpoints dir
-# checkpoint_dir = Path(create_dir_with_name(args.checkpoint_dir, args.experiment_name)) / "runs"
-# checkpoint_dir.mkdir(exist_ok=True)
-# saved_checkpoints_queue = deque()
+checkpoint_dir = Path(create_dir_with_name(args.checkpoint_dir, args.experiment_name)) / "runs"
+checkpoint_dir.mkdir(exist_ok=True)
+saved_checkpoints_queue = deque()
 
 # Logs dir
 log_dir = create_dir_with_name(args.log_dir, args.experiment_name)
@@ -130,7 +160,7 @@ shutil.copy(content_dir / "configs" / "pretrain_agent_config.yml", log_dir)
 
 logger.info(f"Pretraining agent. We teach the agent to generate vectors similar to embeddings.")
 logger.info(f"Experiment name: {args.experiment_name}")
-# logger.info(f"Checkpoints dir: {checkpoint_dir}")
+logger.info(f"Checkpoints dir: {checkpoint_dir}")
 logger.info(f"Log dir: {log_dir}")
 
 
@@ -138,8 +168,8 @@ logger.info(f"Log dir: {log_dir}")
 # Build the model and set up environment
 ###############################################################################
 
-# ltm_model, tokenizer = load_ltm_model(args)
-ltm_model = nn.Linear(5, 5)
+ltm_model, tokenizer = load_ltm_model(args)
+# ltm_model = nn.Linear(5, 5)
 tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model_name_or_path)
 tokenizer.padding_side = "right"
 
@@ -164,6 +194,7 @@ memory_module = MemoryModule(
     agent.model.memory_type,
 )
 env = PretrainEnv(ltm_model, memory_module, episode_max_steps=args.pretrain_params.episode_max_steps, args=args)
+# env.transform_matrix = memory_model.decoder.blocks[0].dense_network_for_embeddings
 reinforce = REINFORCE(
     agent=agent, optimizer=rl_optimizer, train_config=args.rl_params, alpha=alpha, alpha_optimizer=alpha_optimizer
 )
