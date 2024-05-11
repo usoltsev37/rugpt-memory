@@ -366,13 +366,15 @@ if __name__ == "__main__":
     ###############################################################################
 
     ltm_model, tokenizer = load_ltm_model(args)
-    checkpoint = '/home/akarpov/jbelova/rugpt-memory/checkpoints/ltm_pretrain/base/runs/checkpoint-36450/ltm.pt'
-    state_dict = torch.load(checkpoint)["model_parameters"]
-    ltm_model.load_state_dict(state_dict)
-    for p in ltm_model.transform_matrix.parameters():
-        p.requires_grad = False
-    logger.info("Reloaded weigths for pretrained LTM!")
+    # ltm_model.load_state_dict(state_dict)
+    # for p in ltm_model.transform_matrix.parameters():
+    #     p.requires_grad = False
+    # logger.info("Reloaded weigths for pretrained LTM!")
     memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=ltm_model.dtype)
+    checkpoint = '/home/akarpov/jbelova/rugpt-memory/checkpoints/pretrain_agent/memory_model:gen_embs:main_reward:transform_const:like_train_params/runs/checkpoint-340'
+    state_dict = torch.load(checkpoint + "/memory_model.pt")["model_parameters"]
+    memory_model.load_state_dict(state_dict)
+    
 
     ###############################################################################
     # Create optimizers
