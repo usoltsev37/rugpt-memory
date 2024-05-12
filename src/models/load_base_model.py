@@ -24,7 +24,6 @@ def load_base_model(main_config):
         torch_dtype=dtype,
         device_map="auto",
         low_cpu_mem_usage=True,
-        tie_word_embeddings=False,
         offload_state_dict=True,
     )
 

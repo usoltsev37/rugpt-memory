@@ -40,7 +40,7 @@ class LTMGPT2Block(nn.Module):
         self.dense_network2 = DenseNetwork(
             n_hid_layers=1,
             input_dim=self.embed_dim,
-            hidden_dim=self.embed_dim // 8,
+            hidden_dim=self.embed_dim // 4,
             out_dim=self.embed_dim,
             dropout=dropout,
             initialize_with_zeros=True,
@@ -54,26 +54,20 @@ class LTMGPT2Block(nn.Module):
         attention_mask = (1.0 - attention_mask) * torch.finfo(hidden_states.dtype).min
         attention_mask = attention_mask.to(device=hidden_states.device)
         
-        query = self.gpt2_block(hidden_states=hidden_states, attention_mask=attention_mask)[0]
-        residual = query
-
-        # DenseNetwork
-        memory = self.dense_network1(memory)
-
-        # MultiHead Attention
-        key, value = memory, memory
-        x, _ = self.attn(query=query, key=key, value=value)
-
-        # Norm & Concat
-        x = x + residual
-        x = self.ln1(x)
-
-        # DenseNetwork initialized with zeroes
-        x = self.dense_network2(x)
-
-        # Norm & Sum
-        x = x + residual
+        hidden_states = self.gpt2_block(hidden_states=hidden_states, attention_mask=attention_mask)[0]
+        # hidden_states = self.gpt2_block(hidden_states=hidden_states)[0]
         
-        x = self.ln2(x)
+        residual = hidden_states
+        hidden_states = self.ln1(hidden_states)
+        
+        memory = self.dense_network1(memory)
+        
+        attn_output = self.attn(query=hidden_states, key=memory, value=memory)[0]
+        hidden_states = attn_output + residual
 
-        return x
+        hidden_states = self.ln2(hidden_states)
+        feed_forward_hidden_states = self.dense_network2(hidden_states)
+
+        hidden_states = feed_forward_hidden_states + residual
+    
+        return hidden_states

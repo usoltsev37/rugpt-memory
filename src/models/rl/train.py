@@ -74,7 +74,6 @@ def train_rl(data: list[dict], env, reinforce, train_config: TrainingArguments, 
         batch_traj = sample_episodes(env, reinforce, batch, train_config.rl_params)
         transitions.extend(batch_traj)
 
-    reinforce.agent.model.train()
-    mean_loss = reinforce.update(transitions, tensorboard_writer, iter)
+    mean_loss, mean_reward = reinforce.update(transitions, tensorboard_writer, iter)
 
-    return mean_loss
+    return mean_loss, mean_reward

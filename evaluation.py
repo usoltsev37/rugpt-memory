@@ -1,5 +1,6 @@
 import itertools
 import logging
+import math
 import os
 import pickle
 import shutil
@@ -9,7 +10,10 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim
+from datasets import load_dataset
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 from transformers.trainer_pt_utils import get_model_param_count
@@ -26,9 +30,11 @@ from src.models.rl.envs import LTMEnvironment
 from src.models.rl.reinforce import REINFORCE
 from src.models.rl.train import train_rl
 from src.models.rl.utils import State
-from src.utils.logger_singleton import ColourFormatter, logger
 from src.utils.evaluation_config import *
-from src.utils.train_utils import create_dir_with_name, create_name, crop_batch, init_arguments
+from src.utils.logger_singleton import ColourFormatter, logger
+from src.utils.train_utils import (create_dir_with_name, create_name,
+                                   crop_batch, init_arguments)
+
 
 def _evaluate(data: dict) -> torch.Tensor:
     batch_size, num_steps, _ = data["input_ids"].size()
@@ -37,9 +43,8 @@ def _evaluate(data: dict) -> torch.Tensor:
     memory_module.reset(batch_size)
 
     for step in range(num_steps):
-        input_ids, attention_mask = 
-            data["input_ids"][:, step, :].contiguous(),
-            data["attention_mask"][:, step, :].contiguous()
+        input_ids, attention_mask = (data["input_ids"][:, step, :].contiguous(),
+            data["attention_mask"][:, step, :].contiguous())
 
         loss, embeddings = ltm_model(input_ids, attention_mask, memory_module.memory)
 
@@ -75,11 +80,47 @@ def evaluate():
             total_loss += loss
             it += 1
             
-            if i == 5000:
-                break
+            # if i == 5000:
+            #     break
             
     return total_loss / it
-    
+   
+   
+
+def _collate_fn(batch: list[str]) -> dict:
+    batch = [item['text'] for item in batch]  # adjust according to dataset structure
+    tokenized_batch = tokenizer(batch, return_tensors="pt", padding=True)
+    shortest_article_len = tokenized_batch["attention_mask"].sum(dim=-1).min()
+
+    tokenized_batch["input_ids"] = tokenized_batch["input_ids"][:, :shortest_article_len]
+    tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"][:, :shortest_article_len]
+
+    add_tokens_num = (256 - shortest_article_len) % 256
+
+    if add_tokens_num:
+        if 256 - add_tokens_num == 1:
+            tokenized_batch["input_ids"] = tokenized_batch["input_ids"][:, :-1]
+            tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"][:, :-1]
+        else:
+            tokenized_batch["input_ids"] = F.pad(
+                tokenized_batch["input_ids"], (0, add_tokens_num), "constant", tokenizer.pad_token_id
+            ).long()
+            tokenized_batch["attention_mask"] = F.pad(
+                tokenized_batch["attention_mask"], (0, add_tokens_num), "constant", tokenizer.pad_token_id
+            ).long()
+
+    # Reshape to [batch_size, episode_len, len_seq_in_episode]
+    tokenized_batch["input_ids"] = tokenized_batch["input_ids"].view(len(batch), -1, 256)
+    tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"].view(len(batch), -1, 256)
+    return tokenized_batch
+
+def create_dataloader():
+    dataset = load_dataset("csebuetnlp/xlsum", "russian")["test"]
+    length_threshold = 5000  # You can adjust this value based on your needs
+    filtered_dataset = dataset.filter(lambda example: len(example['text']) > length_threshold)
+    dataloader = DataLoader(filtered_dataset, batch_size=1, collate_fn=_collate_fn)
+    return dataloader
+ 
 if __name__ == "__main__":
     ###############################################################################
     # Parse arguments and create directories
@@ -124,7 +165,7 @@ if __name__ == "__main__":
     memory_model.load_state_dict(memory_model_checkpoint)
     
     ltm_model.freeze()
-    agent.memory_model.freeze()
+    memory_model.freeze()
 
     logger.info("Loaded checkpoints for models!")
 
@@ -140,17 +181,19 @@ if __name__ == "__main__":
     ###############################################################################
     # Load data
     ###############################################################################
-    dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
-    test_dataset = WikiDataset(data_path=str(dataset_path), split="test")
-    dataloader = EpochDataloader(
-            test_dataset,
-            tokenizer,
-            step_length=args.ltm_params.step_length,
-            batch_size=args.batch_size,
-            shuffle=False,
-            num_workers=2,
-            pin_memory=True,
-        )
+    # dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
+    # test_dataset = WikiDataset(data_path=str(dataset_path), split="test")
+    # dataloader = EpochDataloader(
+    #         test_dataset,
+    #         tokenizer,
+    #         step_length=args.ltm_params.step_length,
+    #         batch_size=args.batch_size,
+    #         shuffle=True,
+    #         num_workers=2,
+    #         pin_memory=True,
+    #     )
+    
+    dataloader = create_dataloader()
     
     logger.info("Start evaluation...")
     loss = evaluate()

@@ -153,6 +153,6 @@ class REINFORCE:
 
         tensorboard_writer.add_scalar("Iteration Alpha", torch.exp(self.alpha).item(), iter)
         tensorboard_writer.add_scalar("Iteration Mean Entropy", np.mean(entropies), iter)
-        tensorboard_writer.add_scalar("Iteration Mean Reward", np.mean(rewards_), iter)
+        # tensorboard_writer.add_scalar("Iteration Mean Reward", np.mean(rewards_), iter)
 
-        return np.mean(losses)
+        return np.mean(losses), np.mean(rewards_)

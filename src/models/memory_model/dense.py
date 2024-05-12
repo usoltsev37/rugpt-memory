@@ -48,8 +48,8 @@ class DenseNetwork(nn.Module):
         self.layers = nn.Sequential(*layers)
 
         if initialize_with_zeros:
-            for param in self.parameters():
-                nn.init.normal_(param, mean=0., std=1e-4)
+            for param in self.layers[-1].parameters():
+                nn.init.zeros_(param)
                 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

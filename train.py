@@ -3,13 +3,17 @@ import logging
 import os
 import pickle
 import shutil
+import time
 from collections import deque
 from dataclasses import asdict
 from pathlib import Path
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim
+from datasets import load_dataset
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 from transformers.trainer_pt_utils import get_model_param_count
@@ -17,6 +21,7 @@ from transformers.trainer_utils import set_seed
 
 from src.data.wiki_dataloader import EpochDataloader
 from src.data.wiki_dataset import WikiDataset
+from src.models.load_base_model import load_base_model
 from src.models.load_ltm_model import load_ltm_model
 from src.models.ltm_gpt.ltm_gpt import LTM_GPT
 from src.models.memory_model.memory import MemoryModule
@@ -28,7 +33,45 @@ from src.models.rl.train import train_rl
 from src.models.rl.utils import State
 from src.utils.logger_singleton import ColourFormatter, logger
 from src.utils.train_config import *
-from src.utils.train_utils import create_dir_with_name, create_name, crop_batch, init_arguments
+from src.utils.train_utils import (create_dir_with_name, create_name,
+                                   crop_batch, init_arguments)
+
+
+def _collate_fn(batch: list[str]) -> dict:
+    batch = [item['text'] for item in batch]  # adjust according to dataset structure
+    tokenized_batch = tokenizer(batch, return_tensors="pt", padding=True)
+    shortest_article_len = tokenized_batch["attention_mask"].sum(dim=-1).min()
+
+    tokenized_batch["input_ids"] = tokenized_batch["input_ids"][:, :shortest_article_len]
+    tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"][:, :shortest_article_len]
+
+    add_tokens_num = (256 - shortest_article_len) % 256
+
+    if add_tokens_num:
+        if 256 - add_tokens_num == 1:
+            tokenized_batch["input_ids"] = tokenized_batch["input_ids"][:, :-1]
+            tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"][:, :-1]
+        else:
+            tokenized_batch["input_ids"] = F.pad(
+                tokenized_batch["input_ids"], (0, add_tokens_num), "constant", tokenizer.pad_token_id
+            ).long()
+            tokenized_batch["attention_mask"] = F.pad(
+                tokenized_batch["attention_mask"], (0, add_tokens_num), "constant", tokenizer.pad_token_id
+            ).long()
+
+    # Reshape to [batch_size, episode_len, len_seq_in_episode]
+    tokenized_batch["input_ids"] = tokenized_batch["input_ids"].view(len(batch), -1, 256)
+    tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"].view(len(batch), -1, 256)
+    return tokenized_batch
+
+def create_dataloader(split):
+    dataset = load_dataset("csebuetnlp/xlsum", "russian")[split]
+    length_threshold = 4500  # You can adjust this value based on your needs
+    filtered_dataset = dataset.filter(lambda example: len(example['text']) > length_threshold)
+    dataloader = DataLoader(filtered_dataset, batch_size=1, collate_fn=_collate_fn)
+    return dataloader
+
+import copy
 
 
 class Trainer:
@@ -57,6 +100,8 @@ class Trainer:
 
         self.eval_dataloader = self.get_eval_dataloader()
         self.train_dataloader = self.get_train_dataloader()
+        # self.train_dataloader = create_dataloader("train")
+        # self.eval_dataloader = create_dataloader("validation")
 
         self.ltm_clip_grad_norm = args.trainer_args.ltm_clip_grad_norm
 
@@ -237,9 +282,13 @@ class Trainer:
 
         return episode_loss / num_steps
 
+
     def train(self, train_from_checkpoint: bool = False):
         global epoch
 
+        self.ltm_model.unfreeze()
+        self.reinforce.agent.model.unfreeze()
+        
         logger.info("Starting the training process...")
         logger.info(
             f"Number of trainable parameters (LTM) = {get_model_param_count(self.ltm_model, trainable_only=True)}"
@@ -259,16 +308,22 @@ class Trainer:
 
         is_ltm_training = True
         ltm_iteration_count, memory_iteration_count = 0, 0
-        ltm_loss, memory_model_loss = 0.0, 0.0
+        ltm_loss, memory_model_loss, memory_model_reward = 0.0, 0.0, 0.0
         batch_buffer, num_transitions_in_buffer = [], 0
         self.rl_steps = 0
 
+        # ltm_params = copy.deepcopy(self.ltm_model.state_dict())
         for batch in tqdm(self.train_dataloader, total=len(self.train_dataloader)):
             if train_from_checkpoint and batch < self.batch_to_start:
                 continue
 
             if is_ltm_training:
                 ltm_loss += self.train_ltm_on_episode(batch)
+                
+                # for n, p in self.ltm_model.named_parameters():
+                #     old_p = ltm_params[n]
+                #     if (old_p.data == p.data).all():
+                #         print(f"{n} do not update!")
                 ltm_iteration_count += 1
                 if ltm_iteration_count >= ltm_model_iterations:
                     ltm_iteration_count = 0
@@ -284,9 +339,11 @@ class Trainer:
                         num_transitions_in_buffer += cur_transitions
                 else:
                     batch_buffer.append(batch)
-                    memory_model_loss += train_rl(
+                    mean_rl_loss, mean_rl_reward = train_rl(
                         batch_buffer, self.env, self.reinforce, self.args, tensorboard_writer, self.rl_steps
                     )
+                    memory_model_loss += mean_rl_loss
+                    memory_model_reward += mean_rl_reward
 
                     memory_iteration_count += 1
                     batch_buffer, num_transitions_in_buffer = [], 0
@@ -300,12 +357,13 @@ class Trainer:
                         self.cycle += 1
                         ltm_loss /= ltm_model_iterations
                         memory_model_loss /= memory_model_iterations
+                        memory_model_reward /= memory_model_iterations
 
                         val_loss = self.evaluate()
 
                         logger.info(
                             f"""Training cycle {self.cycle} done.\nLTM train loss: {ltm_loss} \
-                        \nLTM val loss: {val_loss}\nMemory model loss: {memory_model_loss}"""
+                        \nLTM val loss: {val_loss}\nMemory model loss: {memory_model_loss}\nMemory model reward: {memory_model_reward}"""
                         )
 
                         tensorboard_writer.add_scalar("Loss/ltm_val_loss", val_loss, self.cycle)
@@ -313,11 +371,14 @@ class Trainer:
                         tensorboard_writer.add_scalar(
                             "Loss/memory_model_train_cycle_loss", memory_model_loss, self.cycle
                         )
+                        tensorboard_writer.add_scalar(
+                            "Rewars/memory_model_train_cycle_reward", memory_model_reward, self.cycle
+                        )
 
                         if not self.cycle % self.args.checkpoint_interval:
                             self.save_checkpoint()
 
-                        ltm_loss, memory_model_loss = 0.0, 0.0
+                        ltm_loss, memory_model_loss, memory_model_reward = 0.0, 0.0, 0.0
 
                         self.ltm_model.unfreeze()
                         self.reinforce.agent.model.freeze()
@@ -441,12 +502,10 @@ if __name__ == "__main__":
     )
 
     try:
-        for epoch in itertools.count(start=1):  # epoch == traverse over train dataset once
+        for epoch in range(args.trainer_args.num_train_epochs):  # epoch == traverse over train dataset once
             trainer.train()
-            if epoch == args.trainer_args.num_train_epochs:
-                logger.info("-" * 100)
-                logger.info("End of training.")
-                break
+            logger.info("-" * 100)
+        logger.info("End of training.")
     except (KeyboardInterrupt, Exception) as e:
         logger.info("-" * 100)
         logger.info("Exiting from training early")

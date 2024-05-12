@@ -14,4 +14,5 @@ def load_ltm_model(main_config) -> tuple[LTM_GPT, transformers.AutoTokenizer]:
         cnt_blocks_with_memory=main_config.ltm_params.cnt_blocks_with_memory,
         device=torch.device(main_config.ltm_params.device),
     )
+    model.freeze()
     return model, tokenizer
