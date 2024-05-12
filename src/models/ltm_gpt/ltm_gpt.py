@@ -27,7 +27,11 @@ class LTM_GPT(nn.Module):
         self.step_length = model_.step_length
         self.add_lora = model_.add_lora
         self.ignore_index = ignore_index
+        
         self.transformer = model_.transformer
+        self.first_device = next(self.transformer.parameters()).device
+        self.second_device = device
+        
         self.transformer_ltm_blocks = nn.ModuleList(
             [
                 LTMGPT2Block(
@@ -38,11 +42,9 @@ class LTM_GPT(nn.Module):
         ).to(device)
 
         self.transformer.h = self.transformer.h[:-cnt_blocks_with_memory]
-        self.lm_head = model_.lm_head.to(device)
+        self.lm_head = model_.lm_head
+        self.ln_f = copy.deepcopy(model_.transformer.ln_f).to(device)
     
-        self.first_device = next(self.transformer.parameters()).device
-        self.second_device = device
-
     def convert_tensor_to_first_device(self, tensor: torch.Tensor) -> torch.Tensor:
         if tensor.device != self.first_device:
             tensor = tensor.to(self.first_device)
@@ -73,12 +75,12 @@ class LTM_GPT(nn.Module):
         attention_mask = self.convert_tensor_to_second_device(attention_mask)
         embeddings = self.convert_tensor_to_second_device(embeddings)
         memory = self.convert_tensor_to_second_device(memory)
-
         for block in self.transformer_ltm_blocks:
             embeddings = block(embeddings, attention_mask, memory)
-
-        embeddings = self.transformer.ln_f(embeddings)
+        embeddings = self.ln_f(embeddings)
         lm_logits = self.lm_head(embeddings)
+        lm_logits = lm_logits.to(self.second_device)
+        
         shift_logits = lm_logits[..., :-1, :].contiguous()
         shift_labels = input_ids[..., 1:].contiguous()
 
