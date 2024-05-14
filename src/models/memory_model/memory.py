@@ -34,17 +34,9 @@ class MemoryModule:
             self.memory = torch.zeros(batch_size, self.num_vectors, self.d_mem)
         else:
             self.memory.zero_()
-        
-        # self.memory = torch.zeros(batch_size, self.num_vectors, self.d_embd)
             
 
     def update(self, action: Action):
         mask = F.one_hot(action.positions, num_classes=self.num_vectors)
         mask = mask.unsqueeze(-1).expand_as(self.memory).to(self.memory.device)
         self.memory = torch.where(mask == 1, action.memory_vectors.to(self.memory.device), self.memory)
-
-    def update_on_pretrain(self, embeddings: torch.Tensor):
-        ids = torch.randint(0, embeddings.shape[1], (self.batch_size, self.num_vectors))
-        ids = ids.unsqueeze(2).expand(self.batch_size, self.num_vectors, embeddings.shape[-1])
-        selected_embeddings = torch.gather(embeddings, 1, ids.to(embeddings.device))
-        self.memory = selected_embeddings.detach()
