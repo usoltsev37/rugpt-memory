@@ -1,11 +1,11 @@
-batch_size: 16
+batch_size: 8
 checkpoint_base_cache_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/base/huggingface
 content_dir: '.'
-experiment_name: eval_base_model:half_steps
-description: "Fisrt evaluation of base_model. Evaluate on half segments by ppl and CEL"
+experiment_name: eval_trained_models
+description: "Fisrt evaluation of traiened models ON NEW DATASET. Evaluate on full segments by ppl and CEL"
 log_dir: /home/akarpov/jbelova/rugpt-memory/logs/runs/eval/
 pretrained_model_name_or_path: ai-forever/rugpt3small_based_on_gpt2
-pretrained_model_path: ""
+pretrained_model_path: "/home/akarpov/jbelova/rugpt-memory/checkpoints/20240512-013530_devbox-X470-AORUS-ULTRA-GAMING/runs/checkpoint-20"
 seed: 42   
 
 base_model_params:
@@ -18,8 +18,8 @@ memory_model_params:
   d_mem: 64
   d_embd: 768
   num_vectors: 8
-  n_dec_block: 2
-  n_enc_block: 2
+  n_dec_block: 3
+  n_enc_block: 3
 
 trainer_args:
   batch_size: 16
