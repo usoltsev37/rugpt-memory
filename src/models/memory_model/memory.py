@@ -34,6 +34,8 @@ class MemoryModule:
             self.memory = torch.zeros(batch_size, self.num_vectors, self.d_mem)
         else:
             self.memory.zero_()
+        
+        # self.memory = torch.zeros(batch_size, self.num_vectors, self.d_embd)
             
 
     def update(self, action: Action):

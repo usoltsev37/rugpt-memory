@@ -181,19 +181,19 @@ if __name__ == "__main__":
     ###############################################################################
     # Load data
     ###############################################################################
-    # dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
-    # test_dataset = WikiDataset(data_path=str(dataset_path), split="test")
-    # dataloader = EpochDataloader(
-    #         test_dataset,
-    #         tokenizer,
-    #         step_length=args.ltm_params.step_length,
-    #         batch_size=args.batch_size,
-    #         shuffle=True,
-    #         num_workers=2,
-    #         pin_memory=True,
-    #     )
+    dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
+    test_dataset = WikiDataset(data_path=str(dataset_path), split="test")
+    dataloader = EpochDataloader(
+            test_dataset,
+            tokenizer,
+            step_length=args.ltm_params.step_length,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=2,
+            pin_memory=True,
+        )
     
-    dataloader = create_dataloader()
+    # dataloader = create_dataloader()
     
     logger.info("Start evaluation...")
     loss = evaluate()

@@ -69,7 +69,7 @@ def _evaluate(data: dict) -> torch.Tensor:
     memory_module.reset(batch_size)
 
     for step in range(num_steps):
-        input_ids, attention_mask = crop_batch(
+        input_ids, attention_mask = (
             data["input_ids"][:, step, :].contiguous(),
             data["attention_mask"][:, step, :].contiguous(),
         )
@@ -125,7 +125,6 @@ def train_ltm_on_episode(ltm_model, ltm_optimizer, memory_module, data: dict, lt
 
     return episode_loss / (num_steps - 1)
 
-import copy
 def pretrain(ltm_model, ltm_optimizer, memory_module, train_dataloader, val_dataloader, args):
     logger.info("Start LTM pretraining...")
     global cur_iter
