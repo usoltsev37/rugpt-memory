@@ -55,7 +55,6 @@ class LTMGPT2Block(nn.Module):
         attention_mask = attention_mask.to(device=hidden_states.device)
         
         hidden_states = self.gpt2_block(hidden_states=hidden_states, attention_mask=attention_mask)[0]
-        # hidden_states = self.gpt2_block(hidden_states=hidden_states)[0]
         
         residual = hidden_states
         hidden_states = self.ln1(hidden_states)

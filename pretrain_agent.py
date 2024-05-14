@@ -7,7 +7,6 @@ from pathlib import Path
 
 import torch
 import torch.optim
-import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 from transformers.trainer_utils import set_seed
@@ -16,7 +15,7 @@ from src.data.wiki_dataloader import EpochDataloader
 from src.data.wiki_dataset import WikiDataset
 from src.models.load_ltm_model import load_ltm_model
 from src.models.memory_model.memory import MemoryModule
-from src.models.memory_model.memory_model import MemoryModel, SyntheticTaskModel
+from src.models.memory_model.memory_model import MemoryModel
 from src.models.rl.agent import Agent
 from src.models.rl.envs import PretrainEnv
 from src.models.rl.reinforce import REINFORCE
@@ -25,14 +24,6 @@ from src.utils.logger_singleton import ColourFormatter, logger
 from src.utils.pretrain_agent_config import load_config
 from src.utils.train_utils import create_dir_with_name, init_arguments
 
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import copy
-
-def evaluate(env, reinforce, args, train_dataloader, val_dataloader):
-    pass
-
-
-import time
 
 def save_models(output_dir: Path) -> None:
     logger.info(f"Saving models checkpoints to {output_dir}")
@@ -67,20 +58,17 @@ def sample_episodes(env: PretrainEnv, reinforce: REINFORCE, data: dict, train_co
     done = False
     trajectories = []
     with torch.no_grad():
-        # logger.info(state.memory[0])
         while not done:
             action, log_proba, distr = reinforce.act(state)  # cpu
             logger.info(f"Positions: {action.positions[0]}")
             logger.info(f"Mean: {action.memory_vectors[0, action.positions[0]].mean()}")
             logger.info(f"Std: {action.memory_vectors[0, action.positions[0]].std()}")
             next_state, reward, done = env.step(action)  # cpu
-            # logger.info(next_state.memory[0])
             logger.info(f"Reward: {reward[0]}")
             trajectories.append([state, action, reward, log_proba, distr])
             state = next_state
             print("-" * 20)
     logger.info(">" * 50)
-
     reinforce.agent.model.train()
     return compute_rewards(trajectories, train_config.gamma)  # There is no reward for the last step
 
@@ -97,9 +85,11 @@ def pretrain(env, reinforce, args, train_dataloader):
         if args.pretrain_params.iterations <= len(train_dataloader)
         else len(train_dataloader)
     )
+    
     batch_buffer, num_transitions_in_buffer = [], 0
+    
     cur_transitions = args.pretrain_params.episode_max_steps * args.trainer_args.batch_size
-    # old_params = copy.deepcopy(reinforce.agent.model.state_dict())
+
     for cur_iter, batch in enumerate(tqdm(train_dataloader, total=iterations_num)):
         if cur_transitions + num_transitions_in_buffer < args.rl_params.min_transitions_per_update:
             batch_buffer.append(batch)
@@ -109,25 +99,19 @@ def pretrain(env, reinforce, args, train_dataloader):
             transitions = []
             for batch in batch_buffer:
                 transitions.extend(sample_episodes(env, reinforce, batch, args.rl_params))
-            mean_loss = reinforce.update(transitions, tensorboard_writer, cur_iter)
-            tensorboard_writer.add_scalar("Iteration mean loss", mean_loss, cur_iter)
+            mean_loss, mean_reward = reinforce.update(transitions, tensorboard_writer, cur_iter)
+            tensorboard_writer.add_scalar("Loss/memory_model", mean_loss, cur_iter)
+            tensorboard_writer.add_scalar("Reward/memory_model", mean_reward, cur_iter)
+            
             batch_buffer, num_transitions_in_buffer = [], 0
-            # env.transform_matrix = memory_model.decoder.blocks[0].dense_network_for_embeddings
         
         if not cur_iter % 20:
             save_checkpoint(cur_iter) 
             
         if cur_iter == iterations_num:
             break
-            # np = reinforce.agent.model.state_dict() 
-            # for n, p in np.items():
-            #     op = old_params[n]
-            #     if (op.data == p.data).all():
-            #         print(f"Not changed: {n}") 
             
-
     logger.info("Memory model pretraining done!")
-
 
 ###############################################################################
 # Parse args, create dirs
@@ -169,11 +153,7 @@ logger.info(f"Log dir: {log_dir}")
 ###############################################################################
 
 ltm_model, tokenizer = load_ltm_model(args)
-# ltm_model = nn.Linear(5, 5)
-tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model_name_or_path)
-tokenizer.padding_side = "right"
 
-# memory_model = SyntheticTaskModel(num_vectors = args.memory_model_params.num_vectors, d_mem = args.memory_model_params.d_mem, memory_type="conservative").to("cuda:0")
 memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=torch.float32)
 
 # Memory Model optimizer
@@ -194,7 +174,6 @@ memory_module = MemoryModule(
     agent.model.memory_type,
 )
 env = PretrainEnv(ltm_model, memory_module, episode_max_steps=args.pretrain_params.episode_max_steps, args=args)
-# env.transform_matrix = memory_model.decoder.blocks[0].dense_network_for_embeddings
 reinforce = REINFORCE(
     agent=agent, optimizer=rl_optimizer, train_config=args.rl_params, alpha=alpha, alpha_optimizer=alpha_optimizer
 )
@@ -218,11 +197,9 @@ train_dataloader = EpochDataloader(
 ###############################################################################
 # Load data
 ###############################################################################
-pretrain(env=env, reinforce=reinforce, args=args, train_dataloader=train_dataloader)
-
-# try:
-#     pretrain(env, reinforce, args, train_dataloader, val_dataloader)
-# except (KeyboardInterrupt, Exception) as e:
-#     logger.info("-" * 100)
-#     logger.info("Exiting from training early")
-#     logger.error(e)
+try:
+    pretrain(env, reinforce, args, train_dataloader)
+except (KeyboardInterrupt, Exception) as e:
+    logger.info("-" * 100)
+    logger.info("Exiting from training early")
+    logger.error(e)
