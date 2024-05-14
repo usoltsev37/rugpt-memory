@@ -76,7 +76,6 @@ class LTM_GPT(nn.Module):
         embeddings = self.convert_tensor_to_second_device(embeddings)
         memory = self.convert_tensor_to_second_device(memory)
         
-        # memory = self.transform_matrix(memory)
         for block in self.transformer_ltm_blocks:
             embeddings = block(embeddings, attention_mask, memory)
         embeddings = self.ln_f(embeddings)
@@ -117,7 +116,4 @@ class LTM_GPT(nn.Module):
                     p.requires_grad = True
             else:
                 p.requires_grad = True
-        
-        # for p in self.transform_matrix.parameters():
-        #     p.requires_grad = True
 
