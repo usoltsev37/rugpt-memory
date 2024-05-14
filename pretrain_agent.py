@@ -37,7 +37,7 @@ def save_models(output_dir: Path) -> None:
 def save_checkpoint(cur_iter):
     global checkpoint_dir
     global saved_checkpoints_queue
-        
+
     checkpoint_folder = f"checkpoint-{cur_iter}"
     output_dir = checkpoint_dir / checkpoint_folder
     saved_checkpoints_queue.append(output_dir)
@@ -50,7 +50,7 @@ def save_checkpoint(cur_iter):
     if len(saved_checkpoints_queue) > args.max_checkpoints:
         oldest_checkpoint = saved_checkpoints_queue.popleft()
         shutil.rmtree(oldest_checkpoint)
-        
+
 
 def sample_episodes(env: PretrainEnv, reinforce: REINFORCE, data: dict, train_config) -> list[tuple]:
     reinforce.agent.model.eval()
@@ -85,9 +85,9 @@ def pretrain(env, reinforce, args, train_dataloader):
         if args.pretrain_params.iterations <= len(train_dataloader)
         else len(train_dataloader)
     )
-    
+
     batch_buffer, num_transitions_in_buffer = [], 0
-    
+
     cur_transitions = args.pretrain_params.episode_max_steps * args.trainer_args.batch_size
 
     for cur_iter, batch in enumerate(tqdm(train_dataloader, total=iterations_num)):
@@ -102,16 +102,17 @@ def pretrain(env, reinforce, args, train_dataloader):
             mean_loss, mean_reward = reinforce.update(transitions, tensorboard_writer, cur_iter)
             tensorboard_writer.add_scalar("Loss/memory_model", mean_loss, cur_iter)
             tensorboard_writer.add_scalar("Reward/memory_model", mean_reward, cur_iter)
-            
+
             batch_buffer, num_transitions_in_buffer = [], 0
-        
+
         if not cur_iter % 20:
-            save_checkpoint(cur_iter) 
-            
+            save_checkpoint(cur_iter)
+
         if cur_iter == iterations_num:
             break
-            
+
     logger.info("Memory model pretraining done!")
+
 
 ###############################################################################
 # Parse args, create dirs
@@ -153,6 +154,9 @@ logger.info(f"Log dir: {log_dir}")
 ###############################################################################
 
 ltm_model, tokenizer = load_ltm_model(args)
+checkpoint = "/home/ybelova/repos/rugpt-memory/ltm.pt"
+state_dict = torch.load(checkpoint)["model_parameters"]
+ltm_model.load_state_dict(state_dict)
 
 memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=torch.float32)
 
@@ -174,6 +178,8 @@ memory_module = MemoryModule(
     agent.model.memory_type,
 )
 env = PretrainEnv(ltm_model, memory_module, episode_max_steps=args.pretrain_params.episode_max_steps, args=args)
+env.transformation_layer = ltm_model.transform_matrix
+env.transformation_layer.to("cuda:0")
 reinforce = REINFORCE(
     agent=agent, optimizer=rl_optimizer, train_config=args.rl_params, alpha=alpha, alpha_optimizer=alpha_optimizer
 )
