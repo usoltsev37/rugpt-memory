@@ -1,8 +1,4 @@
 import torch
-import torch.nn.functional as F
-import numpy as np
-
-from src.models.rl.utils import Action
 
 
 class MemoryModule:
@@ -30,21 +26,12 @@ class MemoryModule:
     def reset(self, batch_size: int) -> None:
         """Initialize a new memory"""
         self.batch_size = batch_size
-        if self.memory is None or self.memory.shape[0] != batch_size:
-            self.memory = torch.zeros(batch_size, self.num_vectors, self.d_mem)
-        else:
-            self.memory.zero_()
-        
-        # self.memory = torch.zeros(batch_size, self.num_vectors, self.d_embd)
+        self.memory = torch.zeros(batch_size, self.num_vectors, self.d_embd)
             
 
-    def update(self, action: Action):
-        mask = F.one_hot(action.positions, num_classes=self.num_vectors)
-        mask = mask.unsqueeze(-1).expand_as(self.memory).to(self.memory.device)
-        self.memory = torch.where(mask == 1, action.memory_vectors.to(self.memory.device), self.memory)
-
-    def update_on_pretrain(self, embeddings: torch.Tensor):
+    def update(self, embeddings: torch.Tensor):
         ids = torch.randint(0, embeddings.shape[1], (self.batch_size, self.num_vectors))
         ids = ids.unsqueeze(2).expand(self.batch_size, self.num_vectors, embeddings.shape[-1])
         selected_embeddings = torch.gather(embeddings, 1, ids.to(embeddings.device))
         self.memory = selected_embeddings.detach()
+

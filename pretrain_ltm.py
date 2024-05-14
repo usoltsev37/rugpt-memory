@@ -34,7 +34,6 @@ def save_models(output_dir: Path) -> None:
         output_dir / "ltm.pt",
     )
 
-
 def save_checkpoint(val_loss):
     global checkpoint_dir
     global saved_checkpoints_queue
@@ -76,6 +75,7 @@ def _evaluate(data: dict) -> torch.Tensor:
 
         loss, embeddings = ltm_model(input_ids, attention_mask, memory_module.memory)
 
+        # There are no previous embeddings in the first step
         if step != 0:
             episode_loss += loss.item()
 
@@ -114,6 +114,7 @@ def train_ltm_on_episode(ltm_model, ltm_optimizer, memory_module, data: dict, lt
 
         loss, embeddings = ltm_model(input_ids, attention_mask, memory_module.memory)
 
+        # There are no previous embeddings on the first step
         if step != 0:
             loss.backward()
             nn.utils.clip_grad_norm_(ltm_model.parameters(), ltm_clip_grad_norm)
@@ -121,7 +122,7 @@ def train_ltm_on_episode(ltm_model, ltm_optimizer, memory_module, data: dict, lt
             episode_loss += loss.item()
 
         ltm_optimizer.zero_grad()
-        memory_module.update_on_pretrain(embeddings)
+        memory_module.update(embeddings)
 
     return episode_loss / (num_steps - 1)
 
