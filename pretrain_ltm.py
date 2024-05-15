@@ -29,16 +29,17 @@ def save_models(output_dir: Path) -> None:
         {
             "cur_iter": cur_iter,
             "model_parameters": ltm_model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict()},
-        
+            "optimizer_state_dict": optimizer.state_dict(),
+        },
         output_dir / "ltm.pt",
     )
+
 
 def save_checkpoint(val_loss):
     global checkpoint_dir
     global saved_checkpoints_queue
     global best_val_loss
-    
+
     if val_loss < best_val_loss:
         best_val_loss = val_loss
         checkpoint_folder = f"best_model"
@@ -46,7 +47,7 @@ def save_checkpoint(val_loss):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         save_models(output_dir)
-        
+
     checkpoint_folder = f"checkpoint-{cur_iter}"
     output_dir = checkpoint_dir / checkpoint_folder
     saved_checkpoints_queue.append(output_dir)
@@ -79,7 +80,7 @@ def _evaluate(data: dict) -> torch.Tensor:
         if step != 0:
             episode_loss += loss.item()
 
-        memory_module.update_on_pretrain(embeddings)
+        memory_module.update(embeddings)
 
     return episode_loss / (num_steps - 1)
 
@@ -126,12 +127,13 @@ def train_ltm_on_episode(ltm_model, ltm_optimizer, memory_module, data: dict, lt
 
     return episode_loss / (num_steps - 1)
 
+
 def pretrain(ltm_model, ltm_optimizer, memory_module, train_dataloader, val_dataloader, args):
     logger.info("Start LTM pretraining...")
     global cur_iter
     global best_val_loss
     best_val_loss = 1e6
-    
+
     for cur_iter, batch in enumerate(tqdm(train_dataloader, total=len(train_dataloader)), start=1):
         if batch["input_ids"].shape[1] < 2:
             continue
@@ -201,7 +203,7 @@ memory_module = MemoryModule(
     args.memory_model_params.d_mem,
     args.memory_model_params.num_vectors,
     torch.float32,
-    args.memory_model_params.memory_type
+    args.memory_model_params.memory_type,
 )
 ###############################################################################
 # Load data

@@ -4,9 +4,7 @@ import torch
 class MemoryModule:
     """External memory for the language model."""
 
-    def __init__(
-        self, d_mem: int, num_vectors: int, dtype: torch.dtype, memory_type: str = "conservative"
-    ):
+    def __init__(self, d_mem: int, num_vectors: int, dtype: torch.dtype, memory_type: str = "conservative"):
         """Initialize the MemoryModule.
 
         The memory's dimensions are [batch_size x num_vectors x d_mem].
@@ -27,11 +25,10 @@ class MemoryModule:
         """Initialize a new memory"""
         self.batch_size = batch_size
         self.memory = torch.zeros(batch_size, self.num_vectors, self.d_embd)
-            
 
     def update(self, embeddings: torch.Tensor):
-        ids = torch.randint(0, embeddings.shape[1], (self.batch_size, self.num_vectors))
-        ids = ids.unsqueeze(2).expand(self.batch_size, self.num_vectors, embeddings.shape[-1])
-        selected_embeddings = torch.gather(embeddings, 1, ids.to(embeddings.device))
-        self.memory = selected_embeddings.detach()
-
+        # ids = torch.randint(0, embeddings.shape[1], (self.batch_size, self.num_vectors))
+        # ids = ids.unsqueeze(2).expand(self.batch_size, self.num_vectors, embeddings.shape[-1])
+        # selected_embeddings = torch.gather(embeddings, 1, ids.to(embeddings.device))
+        embeddings = embeddings[:, -8:, :].contiguous()
+        self.memory = embeddings
