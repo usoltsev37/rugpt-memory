@@ -1,14 +1,14 @@
 checkpoint_base_cache_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/base/huggingface
 checkpoint_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/ltm_pretrain
-checkpoint_interval: 50
+checkpoint_interval: 20
 content_dir: '.'
-experiment_name: all_improvements:inc_lr
-description: "First good ltm pretrain"
+experiment_name: base:change_loss_est
+description: "Correct LTM."
 log_dir: /home/akarpov/jbelova/rugpt-memory/logs/runs/pretrain_ltm
 max_checkpoints: 3
-max_eval_steps: 100
+max_eval_steps: 200
 pretrained_model_name_or_path: ai-forever/rugpt3small_based_on_gpt2
-seed: 43
+seed: 42
 
 base_model_params:
   load_in_4bit: false
