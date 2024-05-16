@@ -1,10 +1,10 @@
 checkpoint_base_cache_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/base/huggingface
-checkpoint_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/train_with_pretrain_ltm/
-checkpoint_interval: 10
+checkpoint_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/pretrain_base/
+checkpoint_interval: 50
 content_dir: '.'
-experiment_name: train:correct_ltm
+experiment_name: pretrain_base
 description: "Correct ltm model and memory model."
-log_dir: /home/akarpov/jbelova/rugpt-memory/logs/runs/train_with_pretrain_ltm/
+log_dir: /home/akarpov/jbelova/rugpt-memory/logs/runs/pretrain_base/
 max_checkpoints: 2
 max_eval_steps: 200
 pretrained_model_name_or_path: ai-forever/rugpt3small_based_on_gpt2
@@ -13,7 +13,7 @@ seed: 42
 base_model_params:
   load_in_4bit: false
   load_in_8bit: false
-  add_lora: false
+  add_lora: true
 
 memory_model_params:
   device: cuda:0
@@ -26,6 +26,7 @@ memory_model_params:
 trainer_args:
   batch_size: 8
   num_train_epochs: 2
+  lr: 1e-5
   ltm_clip_grad_norm: 1.0
   ltm_learning_rate: 1e-5
   ltm_model_iterations: 30

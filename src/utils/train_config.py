@@ -48,6 +48,7 @@ class RLParams:
 class TrainerArgs:
     batch_size: int
     num_train_epochs: int
+    lr: float
     ltm_clip_grad_norm: float
     ltm_learning_rate: float
     ltm_model_iterations: int
