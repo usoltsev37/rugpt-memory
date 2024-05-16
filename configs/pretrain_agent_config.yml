@@ -1,11 +1,11 @@
-checkpoint_base_cache_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/base/huggingface
-checkpoint_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/pretrain_agent
+checkpoint_base_cache_dir: /home/ybelova/repos/rugpt-memory/checkpoints/base/huggingface
+checkpoint_dir:  /media/public/ybelova/rugpt-memory/checkpoints/pretrain_agent
 checkpoint_interval: 5
 content_dir: '.'
 eval_interval: 100
-experiment_name: memory_model:gen_embs:main_reward:transform_const:like_train_params:inc_target_ent:dec_step_length
+experiment_name: correct_ltm:dec_lr:inc_ent
 description: "Train agent to generate embs and positions with main reward and memory model (full_model). TRansform matrix is for embeddings, not trainable"
-log_dir: /home/akarpov/jbelova/rugpt-memory/logs/runs/pretrain_agent/
+log_dir: /home/ybelova/repos/rugpt-memory/logs/runs/pretrain_agent_new/
 max_checkpoints: 2
 max_eval_steps: 32
 pretrained_model_name_or_path: ai-forever/rugpt3small_based_on_gpt2
@@ -17,7 +17,7 @@ base_model_params:
   add_lora: false
 
 ltm_params:
-  step_length: 64
+  step_length: 256
   cnt_blocks_with_memory: 2
   device: cuda:1
 
@@ -32,20 +32,20 @@ memory_model_params:
 pretrain_params:
     episode_max_steps: 12
     iterations: 10000
-    lr: 1e-4
+    lr: 1e-5
 
 rl_params:
   alpha_lr: 1e-4
   batches_per_update: 8
-  batch_size: 32
+  batch_size: 16
   clip: 0.2
   clip_grad_norm: 1.0
   alpha_start: -6
   gamma: 0.99
   kl_target: 1.5
-  min_transitions_per_update: 256
+  min_transitions_per_update: 128
   num_prefixes_for_reward_calc: 3
-  target_entropy: -45
+  target_entropy: 20
 
 trainer_args:
   batch_size: 32

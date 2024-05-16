@@ -154,7 +154,7 @@ logger.info(f"Log dir: {log_dir}")
 ###############################################################################
 
 ltm_model, tokenizer = load_ltm_model(args)
-checkpoint = "/home/ybelova/repos/rugpt-memory/ltm.pt"
+checkpoint = "/media/public/ybelova/rugpt-memory/checkpoints/ltm_pretrain/all_improvements:change_embs/runs/checkpoint-19400/ltm.pt"
 state_dict = torch.load(checkpoint)["model_parameters"]
 ltm_model.load_state_dict(state_dict)
 
