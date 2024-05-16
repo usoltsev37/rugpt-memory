@@ -24,7 +24,9 @@ class ActionSampler(nn.Module):
             dtype=dtype,
         )
 
-        self.dense_pos_distr = DenseNetwork(n_hid_layers=1, input_dim=d_mem, hidden_dim=d_mem * 2, out_dim=1, dtype=dtype)
+        self.dense_pos_distr = DenseNetwork(
+            n_hid_layers=1, input_dim=d_mem, hidden_dim=d_mem * 2, out_dim=1, dtype=dtype
+        )
         self.dense_norm_mu = DenseNetwork(
             n_hid_layers=1,
             input_dim=d_mem,
@@ -50,6 +52,7 @@ class ActionSampler(nn.Module):
 
         pos_distr = self.dense_pos_distr(memory)  # [batch, mem_size, 1]
         mu_distr = self.dense_norm_mu(memory)  # [batch, num_vectors, d_mem]
+        mu_distr = torch.tanh(mu_distr)
         sigma_distr = 2 * (torch.tanh(self.dense_norm_sigma(memory)) - 1)  # [batch, num_vectors, d_mem]
         # sigma_distr = self.dense_norm_sigma(memory)  # [batch, num_vectors, d_mem]
 
@@ -62,5 +65,5 @@ class ActionSampler(nn.Module):
         # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         # mu_distr = torch.ones(memory.shape).to(memory.device)
         # sigma_distr = torch.full(memory.shape, -10).to(memory.device)
-        
+
         return positions, mu_distr, sigma_distr
