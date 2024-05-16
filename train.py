@@ -80,7 +80,7 @@ class Trainer:
             self.tokenizer,
             step_length=self.args.ltm_params.step_length,
             batch_size=self.args.trainer_args.batch_size,
-            shuffle=True,
+            shuffle=False,
             num_workers=2,
             pin_memory=True,
         )
@@ -88,6 +88,7 @@ class Trainer:
     def _evaluate(self, data: dict) -> torch.Tensor:
         batch_size, num_steps, _ = data["input_ids"].size()
         episode_loss = 0.0
+        episode_token_count = 0
 
         self.memory_module.reset(batch_size)
 
@@ -100,7 +101,9 @@ class Trainer:
 
             loss, embeddings = self.ltm_model(input_ids, attention_mask, self.memory_module.memory)
 
-            episode_loss += loss.item()
+            num_tokens_in_segment = attention_mask[0].sum(-1)
+            episode_token_count += num_tokens_in_segment
+            episode_loss += loss.item() * num_tokens_in_segment
 
             # Prepare action for agent
             state = State(
@@ -116,7 +119,7 @@ class Trainer:
             # Update memory
             self.memory_module.update(action)
 
-        return episode_loss / num_steps
+        return episode_loss / episode_token_count
 
     def evaluate(self):
         self.ltm_model.freeze()
@@ -187,6 +190,7 @@ class Trainer:
 
         episode_loss = 0.0
         batch_size, num_steps, _ = data["input_ids"].size()
+        episode_token_count = 0
 
         self.memory_module.reset(batch_size)
 
@@ -205,7 +209,9 @@ class Trainer:
             self.ltm_optimizer.step()
             self.ltm_optimizer.zero_grad()
 
-            episode_loss += loss.item()
+            num_tokens_in_segment = attention_mask[0].sum(-1)
+            episode_token_count += num_tokens_in_segment
+            episode_loss += loss.item() * num_tokens_in_segment
 
             # Prepare action for agent
             state = State(
@@ -221,7 +227,7 @@ class Trainer:
             # Update memory
             self.memory_module.update(action)
 
-        return episode_loss / num_steps
+        return episode_loss / episode_token_count
 
     def train(self, train_from_checkpoint: bool = False):
         global epoch
@@ -361,17 +367,17 @@ if __name__ == "__main__":
     ltm_model, tokenizer = load_ltm_model(args)
 
     # LOAD LTM PRETRAIN
-    checkpoint = "/media/public/ybelova/rugpt-memory/checkpoints/ltm_pretrain/all_improvements:change_embs/runs/checkpoint-19400/ltm.pt"
-    state_dict = torch.load(checkpoint)["model_parameters"]
-    ltm_model.load_state_dict(state_dict)
-    for p in ltm_model.transform_matrix.parameters():
-        p.requires_grad = False
-    logger.info("Reloaded weigths for pretrained LTM!")
+    # checkpoint = "/media/public/ybelova/rugpt-memory/checkpoints/ltm_pretrain/all_improvements:change_embs/runs/checkpoint-19400/ltm.pt"
+    # state_dict = torch.load(checkpoint)["model_parameters"]
+    # ltm_model.load_state_dict(state_dict)
+    # for p in ltm_model.transform_matrix.parameters():
+    #     p.requires_grad = False
+    # logger.info("Reloaded weigths for pretrained LTM!")
 
     memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=ltm_model.dtype)
-    checkpoint = "/media/public/ybelova/rugpt-memory/checkpoints/pretrain_agent/correct_ltm:dec_lr/runs/checkpoint-10000/memory_model.pt"
-    state_dict = torch.load(checkpoint)["model_parameters"]
-    memory_model.load_state_dict(state_dict)
+    # checkpoint = "/media/public/ybelova/rugpt-memory/checkpoints/pretrain_agent/correct_ltm:dec_lr/runs/checkpoint-10000/memory_model.pt"
+    # state_dict = torch.load(checkpoint)["model_parameters"]
+    # memory_model.load_state_dict(state_dict)
 
     ###############################################################################
     # Create optimizers
