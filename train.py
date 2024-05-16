@@ -31,8 +31,7 @@ from src.models.rl.train import train_rl
 from src.models.rl.utils import State
 from src.utils.logger_singleton import ColourFormatter, logger
 from src.utils.train_config import *
-from src.utils.train_utils import (create_dir_with_name, create_name,
-                                   crop_batch, init_arguments)
+from src.utils.train_utils import create_dir_with_name, create_name, crop_batch, init_arguments
 
 
 class Trainer:
@@ -94,9 +93,11 @@ class Trainer:
 
         for step in range(num_steps):
             # FULL SEGMENT!
-            input_ids, attention_mask = (data["input_ids"][:, step, :].contiguous(),
-                data["attention_mask"][:, step, :].contiguous())
-            
+            input_ids, attention_mask = (
+                data["input_ids"][:, step, :].contiguous(),
+                data["attention_mask"][:, step, :].contiguous(),
+            )
+
             loss, embeddings = self.ltm_model(input_ids, attention_mask, self.memory_module.memory)
 
             episode_loss += loss.item()
@@ -222,13 +223,12 @@ class Trainer:
 
         return episode_loss / num_steps
 
-
     def train(self, train_from_checkpoint: bool = False):
         global epoch
 
         self.ltm_model.unfreeze()
         self.reinforce.agent.model.unfreeze()
-        
+
         logger.info("Starting the training process...")
         logger.info(
             f"Number of trainable parameters (LTM) = {get_model_param_count(self.ltm_model, trainable_only=True)}"
@@ -297,7 +297,7 @@ class Trainer:
                         logger.info(
                             f"""Training cycle {self.cycle} done.\nLTM train loss: {ltm_loss}\nMemory model loss: {memory_model_loss}\nMemory model reward: {memory_model_reward}"""
                         )
-                                                
+
                         if not self.cycle % self.args.checkpoint_interval:
                             val_loss = self.evaluate()
                             logger.info(f"\nLTM val loss: {val_loss}")
@@ -307,9 +307,7 @@ class Trainer:
                         tensorboard_writer.add_scalar(
                             "Loss/memory_model_train_cycle_loss", memory_model_loss, self.cycle
                         )
-                        tensorboard_writer.add_scalar(
-                            "Reward/memory_model_reward", memory_model_reward, self.cycle
-                        )
+                        tensorboard_writer.add_scalar("Reward/memory_model_reward", memory_model_reward, self.cycle)
 
                         if not self.cycle % self.args.checkpoint_interval:
                             self.save_checkpoint()
@@ -361,21 +359,19 @@ if __name__ == "__main__":
     ###############################################################################
 
     ltm_model, tokenizer = load_ltm_model(args)
-    
+
     # LOAD LTM PRETRAIN
-    checkpoint = '/home/akarpov/jbelova/rugpt-memory/checkpoints/ltm_pretrain/all_improvements:inc_lr/runs/checkpoint-33650/ltm.pt'
+    checkpoint = "/media/public/ybelova/rugpt-memory/checkpoints/ltm_pretrain/all_improvements:change_embs/runs/checkpoint-19400/ltm.pt"
     state_dict = torch.load(checkpoint)["model_parameters"]
     ltm_model.load_state_dict(state_dict)
     for p in ltm_model.transform_matrix.parameters():
         p.requires_grad = False
     logger.info("Reloaded weigths for pretrained LTM!")
-    
+
     memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=ltm_model.dtype)
-    
-    # checkpoint = '/home/akarpov/jbelova/rugpt-memory/checkpoints/ltm_pretrain/all_improvements:inc_lr/runs/checkpoint-33650/ltm.pt'
-    # state_dict = torch.load(checkpoint)["model_parameters"]
-    # memory_model.load_state_dict(state_dict)
-    
+    checkpoint = "/media/public/ybelova/rugpt-memory/checkpoints/pretrain_agent/correct_ltm:dec_lr/runs/checkpoint-10000/memory_model.pt"
+    state_dict = torch.load(checkpoint)["model_parameters"]
+    memory_model.load_state_dict(state_dict)
 
     ###############################################################################
     # Create optimizers
