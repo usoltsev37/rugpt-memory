@@ -2,7 +2,6 @@ import logging
 import os
 import shutil
 from collections import deque
-from dataclasses import asdict
 from pathlib import Path
 
 import torch
@@ -65,7 +64,8 @@ def save_checkpoint(val_loss):
 def _evaluate(data: dict) -> torch.Tensor:
     batch_size, num_steps, _ = data["input_ids"].size()
     episode_loss = 0.0
-
+    token_count = 0
+    
     memory_module.reset(batch_size)
 
     for step in range(num_steps):
@@ -78,11 +78,13 @@ def _evaluate(data: dict) -> torch.Tensor:
 
         # There are no previous embeddings in the first step
         if step != 0:
-            episode_loss += loss.item()
+            num_tokens_in_segment = attention_mask[0].sum(-1)
+            episode_loss += loss.item() * num_tokens_in_segment
+            token_count += num_tokens_in_segment
 
         memory_module.update(embeddings)
 
-    return episode_loss / (num_steps - 1)
+    return episode_loss / token_count
 
 
 def evaluate(val_dataloader, ltm_model):
@@ -104,9 +106,9 @@ def evaluate(val_dataloader, ltm_model):
 def train_ltm_on_episode(ltm_model, ltm_optimizer, memory_module, data: dict, ltm_clip_grad_norm) -> float:
     episode_loss = 0.0
     batch_size, num_steps, _ = data["input_ids"].size()
+    token_count = 0
 
     memory_module.reset(batch_size)
-
     for step in range(num_steps):
         input_ids, attention_mask = crop_batch(
             data["input_ids"][:, step, :].contiguous(),
@@ -120,12 +122,15 @@ def train_ltm_on_episode(ltm_model, ltm_optimizer, memory_module, data: dict, lt
             loss.backward()
             nn.utils.clip_grad_norm_(ltm_model.parameters(), ltm_clip_grad_norm)
             ltm_optimizer.step()
-            episode_loss += loss.item()
+            
+            num_tokens_in_segment = attention_mask[0].sum(-1)
+            episode_loss += loss.item() * num_tokens_in_segment
+            token_count += num_tokens_in_segment
 
         ltm_optimizer.zero_grad()
         memory_module.update(embeddings)
 
-    return episode_loss / (num_steps - 1)
+    return episode_loss / token_count
 
 
 def pretrain(ltm_model, ltm_optimizer, memory_module, train_dataloader, val_dataloader, args):
@@ -143,7 +148,7 @@ def pretrain(ltm_model, ltm_optimizer, memory_module, train_dataloader, val_data
         logger.info(f"""Training iteration {cur_iter} done.\nLTM train loss: {ltm_loss}""")
         tensorboard_writer.add_scalar("Loss/LTM iteration loss", ltm_loss, cur_iter)
 
-        if not cur_iter % 50:
+        if not cur_iter % 20:
             ltm_val_loss = evaluate(val_dataloader=val_dataloader, ltm_model=ltm_model)
             ltm_model.unfreeze()
             logger.info(f"""Evaluation on {cur_iter} done.\nLTM val loss: {ltm_loss}""")

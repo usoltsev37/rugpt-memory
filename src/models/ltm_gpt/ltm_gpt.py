@@ -42,7 +42,7 @@ class LTM_GPT(nn.Module):
         self.transformer.h = self.transformer.h[:-cnt_blocks_with_memory]
         self.lm_head = model_.lm_head
         self.ln_f = copy.deepcopy(model_.transformer.ln_f).to(device)
-        self.transform_matrix = nn.Linear(768, 64).to(self.second_device)
+        self.transform_matrix = nn.Linear(self.d_embd, model_.d_mem).to(self.second_device)
 
     def convert_tensor_to_first_device(self, tensor: torch.Tensor) -> torch.Tensor:
         if tensor.device != self.first_device:
@@ -74,6 +74,7 @@ class LTM_GPT(nn.Module):
         attention_mask = self.convert_tensor_to_second_device(attention_mask)
         embeddings = self.convert_tensor_to_second_device(embeddings)
         memory = self.convert_tensor_to_second_device(memory)
+        memory = torch.tanh(self.transform_matrix(memory))
 
         for block in self.transformer_ltm_blocks:
             embeddings = block(embeddings, attention_mask, memory)
@@ -111,3 +112,6 @@ class LTM_GPT(nn.Module):
         for n, p in self.transformer_ltm_blocks.named_parameters():
             if "gpt2_block" not in n:
                 p.requires_grad = True
+
+        for p in self.transform_matrix.parameters():
+            p.requires_grad = True
