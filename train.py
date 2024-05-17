@@ -302,7 +302,7 @@ class Trainer:
                         memory_model_reward /= memory_model_iterations
 
                         logger.info(
-                            f"""Training cycle {self.cycle} done.\nLTM train loss: {ltm_loss}\nMemory model loss: {memory_model_loss}\nMemory model reward: {memory_model_reward}"""
+                            f"""Training cycle {self.cycle} done.\nLTM train loss: {ltm_loss:.4f}\nMemory model loss: {memory_model_loss:.4f}\nMemory model reward: {memory_model_reward:.4f}"""
                         )
 
                         if not self.cycle % self.args.checkpoint_interval:
