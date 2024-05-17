@@ -102,3 +102,5 @@ logs/
 repo/
 
 wandb/
+
+configs/
