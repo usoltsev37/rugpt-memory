@@ -58,3 +58,5 @@ class EpochDataloader(DataLoader):
 
     def __next__(self) -> torch.Tensor:
         return next(self.iterator)
+    
+    

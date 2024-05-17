@@ -53,16 +53,11 @@ class ActionSampler(nn.Module):
         pos_distr = self.dense_pos_distr(memory)  # [batch, mem_size, 1]
         mu_distr = self.dense_norm_mu(memory)  # [batch, num_vectors, d_mem]
         sigma_distr = 2 * (torch.tanh(self.dense_norm_sigma(memory)) - 1)  # [batch, num_vectors, d_mem]
-        # sigma_distr = self.dense_norm_sigma(memory)  # [batch, num_vectors, d_mem]
 
         positions = None
         if self.memory_type == "conservative":
             positions = F.softmax(pos_distr.squeeze(dim=-1), dim=-1)  # [batch_size, num_vectors]
         elif self.memory_type == "flexible":
             positions = F.sigmoid(pos_distr.squeeze(dim=-1))  # [batch_size, num_vectors]
-
-        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        # mu_distr = torch.ones(memory.shape).to(memory.device)
-        # sigma_distr = torch.full(memory.shape, -10).to(memory.device)
 
         return positions, mu_distr, sigma_distr

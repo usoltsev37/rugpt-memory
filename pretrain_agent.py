@@ -67,7 +67,8 @@ def sample_episodes(env: PretrainEnv, reinforce: REINFORCE, data: dict, train_co
             logger.info(f"Reward: {reward[0]}")
             trajectories.append([state, action, reward, log_proba, distr])
             state = next_state
-            print("-" * 20)
+            logger.info("-" * 50)
+            
     logger.info(">" * 50)
     reinforce.agent.model.train()
     return compute_rewards(trajectories, train_config.gamma)  # There is no reward for the last step
@@ -105,7 +106,7 @@ def pretrain(env, reinforce, args, train_dataloader):
 
             batch_buffer, num_transitions_in_buffer = [], 0
 
-        if not cur_iter % 20:
+        if not cur_iter % args.checkpoint_interval:
             save_checkpoint(cur_iter)
 
         if cur_iter == iterations_num:
@@ -154,9 +155,6 @@ logger.info(f"Log dir: {log_dir}")
 ###############################################################################
 
 ltm_model, tokenizer = load_ltm_model(args)
-# checkpoint = "/media/public/ybelova/rugpt-memory/checkpoints/ltm_pretrain/all_improvements:change_embs/runs/checkpoint-19400/ltm.pt"
-# state_dict = torch.load(checkpoint)["model_parameters"]
-# ltm_model.load_state_dict(state_dict)
 
 memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=torch.float32)
 
@@ -178,8 +176,6 @@ memory_module = MemoryModule(
     agent.model.memory_type,
 )
 env = PretrainEnv(ltm_model, memory_module, episode_max_steps=args.pretrain_params.episode_max_steps, args=args)
-# env.transformation_layer = ltm_model.transform_matrix
-# env.transformation_layer.to("cuda:0")
 reinforce = REINFORCE(
     agent=agent, optimizer=rl_optimizer, train_config=args.rl_params, alpha=alpha, alpha_optimizer=alpha_optimizer
 )
@@ -195,8 +191,6 @@ train_dataloader = EpochDataloader(
     tokenizer=tokenizer,
     step_length=args.ltm_params.step_length,
     batch_size=args.trainer_args.batch_size,
-    shuffle=True,
-    num_workers=2,
     pin_memory=True,
 )
 
