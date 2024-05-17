@@ -1,6 +1,6 @@
 checkpoint_base_cache_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/base/huggingface
 checkpoint_dir:  /home/akarpov/jbelova/rugpt-memory/checkpoints/pretrain_agent_new/
-checkpoint_interval: 50
+checkpoint_interval: 100
 content_dir: '.'
 eval_interval: 100
 experiment_name: pretrain_on_new_dataset

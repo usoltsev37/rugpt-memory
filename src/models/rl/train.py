@@ -1,8 +1,7 @@
 import torch
-
+import numpy as np
 from src.models.ltm_gpt.ltm_gpt import LTM_GPT
 from src.models.rl.reinforce import Agent
-from src.models.rl.envs import PretrainEnv
 from src.models.rl.reinforce import REINFORCE
 from src.utils.train_config import RLParams, TrainingArguments
 
@@ -29,10 +28,10 @@ def compute_rewards(trajectory: list[list], gamma: float):
     return [
         (state, action, reward, log_proba, distr)
         for (state, action, _, log_proba, distr), reward in zip(trajectory, reversed(rewards))
-    ]
+    ], rewards[-1].mean().item()
 
 
-def sample_episodes(env: PretrainEnv, reinforce: REINFORCE, data: dict, train_config: RLParams) -> [tuple]:
+def sample_episodes(env, reinforce: REINFORCE, data: dict, train_config: RLParams) -> [tuple]:
     """
     Samples an episode of interaction between an reinforce and an environment,
     then computes and returns the discounted rewards for each step in the episode.
@@ -67,11 +66,13 @@ def train_rl(data: list[dict], env, reinforce, train_config: TrainingArguments, 
     reinforce.agent.model.eval()
 
     transitions = []
+    rewards = []
 
     for batch in data:
-        batch_traj = sample_episodes(env, reinforce, batch, train_config.rl_params)
+        batch_traj, mean_reward = sample_episodes(env, reinforce, batch, train_config.rl_params)
         transitions.extend(batch_traj)
+        rewards.append(mean_reward)
 
-    mean_loss, mean_reward = reinforce.update(transitions, tensorboard_writer, iter)
+    mean_loss = reinforce.update(transitions, tensorboard_writer, iter)
 
-    return mean_loss, mean_reward
+    return mean_loss, np.mean(rewards)

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import torch
 import torch.optim
+import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 from transformers.trainer_utils import set_seed
@@ -61,10 +62,10 @@ def sample_episodes(env: PretrainEnv, reinforce: REINFORCE, data: dict, train_co
         while not done:
             action, log_proba, distr = reinforce.act(state)  # cpu
             logger.info(f"Positions: {action.positions[0]}")
-            logger.info(f"Mean: {action.memory_vectors[0, action.positions[0]].mean()}")
-            logger.info(f"Std: {action.memory_vectors[0, action.positions[0]].std()}")
+            logger.info(f"Mean: {action.memory_vectors[0, action.positions[0]].mean():.4f}")
+            logger.info(f"Std: {action.memory_vectors[0, action.positions[0]].std():.4f}")
             next_state, reward, done = env.step(action)  # cpu
-            logger.info(f"Reward: {reward[0]}")
+            logger.info(f"Reward: {reward[0]:.4f}")
             trajectories.append([state, action, reward, log_proba, distr])
             state = next_state
             logger.info("-" * 50)
@@ -88,6 +89,8 @@ def pretrain(env, reinforce, args, train_dataloader):
     )
 
     batch_buffer, num_transitions_in_buffer = [], 0
+    transitions_reward = []
+    
 
     cur_transitions = args.pretrain_params.episode_max_steps * args.trainer_args.batch_size
 
@@ -99,12 +102,15 @@ def pretrain(env, reinforce, args, train_dataloader):
             batch_buffer.append(batch)
             transitions = []
             for batch in batch_buffer:
-                transitions.extend(sample_episodes(env, reinforce, batch, args.rl_params))
-            mean_loss, mean_reward = reinforce.update(transitions, tensorboard_writer, cur_iter)
+                new_transitions, mean_reward = sample_episodes(env, reinforce, batch, args.rl_params)
+                transitions_reward.append(mean_reward)
+                transitions.extend(new_transitions)
+            mean_loss = reinforce.update(transitions, tensorboard_writer, cur_iter)
             tensorboard_writer.add_scalar("Loss/memory_model", mean_loss, cur_iter)
-            tensorboard_writer.add_scalar("Reward/memory_model", mean_reward, cur_iter)
+            tensorboard_writer.add_scalar("Reward/memory_model", np.mean(transitions_reward), cur_iter)
 
             batch_buffer, num_transitions_in_buffer = [], 0
+            transitions_reward = []
 
         if not cur_iter % args.checkpoint_interval:
             save_checkpoint(cur_iter)
@@ -197,6 +203,8 @@ train_dataloader = EpochDataloader(
 ###############################################################################
 # Load data
 ###############################################################################
+pretrain(env, reinforce, args, train_dataloader)
+
 try:
     pretrain(env, reinforce, args, train_dataloader)
 except (KeyboardInterrupt, Exception) as e:
