@@ -42,7 +42,7 @@ class LTMGPT2Block(nn.Module):
         self.dense_network2 = DenseNetwork(
             n_hid_layers=1,
             input_dim=self.embed_dim,
-            hidden_dim=self.embed_dim * 4,
+            hidden_dim=self.embed_dim,
             out_dim=self.embed_dim,
             dropout=dropout,
             initialize_with_zeros=True,
