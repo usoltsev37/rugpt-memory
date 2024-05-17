@@ -305,7 +305,7 @@ class Trainer:
                             f"""Training cycle {self.cycle} done.\nLTM train loss: {ltm_loss:.4f}\nMemory model loss: {memory_model_loss:.4f}\nMemory model reward: {memory_model_reward:.4f}"""
                         )
 
-                        if not self.cycle % self.args.checkpoint_interval:
+                        if not self.cycle % 30:
                             val_loss = self.evaluate()
                             logger.info(f"\nLTM val loss: {val_loss}")
                             tensorboard_writer.add_scalar("Loss/LTM_val", val_loss, self.cycle)
