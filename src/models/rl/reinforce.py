@@ -123,7 +123,7 @@ class REINFORCE:
 
             if step > 0 and self.kl_target is not None and torch.mean(kld) > self.kl_target:
                 logger.warning(f"Early stopping! KLD is {torch.mean(kld)} on iteration {step + 1}")
-                return np.mean(losses), np.mean(rewards_)
+                return np.mean(losses)
 
             ratio = torch.exp(cur_proba - old_proba_batch)
 
@@ -147,10 +147,10 @@ class REINFORCE:
 
             losses.append(loss.item())
             entropies.append(entropy.mean().item())
-            rewards_.append(reward_batch.mean().item())
+            # rewards_.append(reward_batch.mean().item())
 
         tensorboard_writer.add_scalar("Iteration Alpha", torch.exp(self.alpha).item(), iter)
         tensorboard_writer.add_scalar("Iteration Mean Entropy", np.mean(entropies), iter)
         # tensorboard_writer.add_scalar("Iteration Mean Reward", np.mean(rewards_), iter)
 
-        return np.mean(losses), np.mean(rewards_)
+        return np.mean(losses)
