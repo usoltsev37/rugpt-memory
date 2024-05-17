@@ -92,12 +92,12 @@ class WikiDataset(Dataset):
         print(f"Len of split: {len(self.id_to_offset)}")
         print(f"Number of examples: {len(self.ids)}")
         
-        self.save_dataset()
+        # self.save_dataset()
         
         self.length = len(self.ids)
         self.current_file = None
         self.current_file_index = 0
-        self.file_paths = list((self.data_path / "dataset_with_sampled_context" / "train").rglob('*'))
+        self.file_paths = list((self.data_path / "dataset_with_sampled_context" / split).rglob('*'))
         self.load_next_file()
         
     def load_next_file(self):
@@ -295,6 +295,6 @@ class WikiDataset(Dataset):
     #         article = json.loads(f.readline())
     #         return self._add_context_to_article(article)
 
-set_seed(42)
-dataset_path = (Path('.') / "data" / "dataset").resolve()
-train_dataset = WikiDataset(data_path=str(dataset_path), split="test")
+# set_seed(42)
+# dataset_path = (Path('.') / "data" / "dataset").resolve()
+# train_dataset = WikiDataset(data_path=str(dataset_path), split="test")

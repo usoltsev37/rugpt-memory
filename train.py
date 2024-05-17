@@ -280,11 +280,12 @@ class Trainer:
                         num_transitions_in_buffer += cur_transitions
                 else:
                     batch_buffer.append(batch)
-                    mean_rl_loss, mean_rl_reward = train_rl(
+                    rl_iteration_loss, rl_iteration_reward = train_rl(
                         batch_buffer, self.env, self.reinforce, self.args, tensorboard_writer, self.rl_steps
                     )
-                    memory_model_loss += mean_rl_loss
-                    memory_model_reward += mean_rl_reward
+                    tensorboard_writer.add_scalar("Reward/iteration", rl_iteration_reward, self.rl_steps)
+                    memory_model_loss += rl_iteration_loss
+                    memory_model_reward += rl_iteration_reward
 
                     memory_iteration_count += 1
                     batch_buffer, num_transitions_in_buffer = [], 0
@@ -307,13 +308,13 @@ class Trainer:
                         if not self.cycle % self.args.checkpoint_interval:
                             val_loss = self.evaluate()
                             logger.info(f"\nLTM val loss: {val_loss}")
-                            tensorboard_writer.add_scalar("Loss/ltm_val_loss", val_loss, self.cycle)
+                            tensorboard_writer.add_scalar("Loss/LTM_val", val_loss, self.cycle)
 
-                        tensorboard_writer.add_scalar("Loss/ltm_train_cycle_loss", ltm_loss, self.cycle)
+                        tensorboard_writer.add_scalar("Loss/LTM_train", ltm_loss, self.cycle)
                         tensorboard_writer.add_scalar(
-                            "Loss/memory_model_train_cycle_loss", memory_model_loss, self.cycle
+                            "Loss/MemoryModel", memory_model_loss, self.cycle
                         )
-                        tensorboard_writer.add_scalar("Reward/memory_model_reward", memory_model_reward, self.cycle)
+                        tensorboard_writer.add_scalar("Reward/cycle", memory_model_reward, self.cycle)
 
                         if not self.cycle % self.args.checkpoint_interval:
                             self.save_checkpoint()
