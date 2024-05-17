@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 import torch.nn.functional as F
 
-from src.data.wiki_dataset import WikiDataset
+from wiki_dataset import WikiDataset
 
 
 class EpochDataloader(DataLoader):
@@ -58,3 +58,5 @@ class EpochDataloader(DataLoader):
 
     def __next__(self) -> torch.Tensor:
         return next(self.iterator)
+    
+    
