@@ -89,8 +89,8 @@ class WikiDataset(Dataset):
 
         self.id_to_offset, self.ids = self._load_index()
         
-        print(f"Len of split: {len(self.id_to_offset)}")
-        print(f"Number of examples: {len(self.ids)}")
+        # print(f"Len of split: {len(self.id_to_offset)}")
+        # print(f"Number of examples: {len(self.ids)}")
         
         # self.save_dataset()
         
