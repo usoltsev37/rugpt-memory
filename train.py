@@ -70,7 +70,7 @@ class Trainer:
             step_length=self.args.ltm_params.step_length,
             batch_size=self.args.trainer_args.batch_size,
             shuffle=False,
-            num_workers=2,
+            # num_workers=2,
             pin_memory=True,
         )
 
@@ -81,7 +81,7 @@ class Trainer:
             step_length=self.args.ltm_params.step_length,
             batch_size=self.args.trainer_args.batch_size,
             shuffle=False,
-            num_workers=2,
+            # num_workers=2,
             pin_memory=True,
         )
 
