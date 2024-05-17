@@ -64,8 +64,9 @@ class DecoderBlock(nn.Module):
         self.d_mem = d_mem
 
         self.dense_network_for_embeddings = DenseNetwork(
-            n_hid_layers=0,
+            n_hid_layers=1,
             input_dim=d_embd,
+            hidden_dim=d_mem,
             out_dim=d_mem,
             dropout=dropout,
         )

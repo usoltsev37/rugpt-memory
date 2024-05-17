@@ -154,9 +154,9 @@ logger.info(f"Log dir: {log_dir}")
 ###############################################################################
 
 ltm_model, tokenizer = load_ltm_model(args)
-checkpoint = "/media/public/ybelova/rugpt-memory/checkpoints/ltm_pretrain/all_improvements:change_embs/runs/checkpoint-19400/ltm.pt"
-state_dict = torch.load(checkpoint)["model_parameters"]
-ltm_model.load_state_dict(state_dict)
+# checkpoint = "/media/public/ybelova/rugpt-memory/checkpoints/ltm_pretrain/all_improvements:change_embs/runs/checkpoint-19400/ltm.pt"
+# state_dict = torch.load(checkpoint)["model_parameters"]
+# ltm_model.load_state_dict(state_dict)
 
 memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=torch.float32)
 
@@ -178,8 +178,8 @@ memory_module = MemoryModule(
     agent.model.memory_type,
 )
 env = PretrainEnv(ltm_model, memory_module, episode_max_steps=args.pretrain_params.episode_max_steps, args=args)
-env.transformation_layer = ltm_model.transform_matrix
-env.transformation_layer.to("cuda:0")
+# env.transformation_layer = ltm_model.transform_matrix
+# env.transformation_layer.to("cuda:0")
 reinforce = REINFORCE(
     agent=agent, optimizer=rl_optimizer, train_config=args.rl_params, alpha=alpha, alpha_optimizer=alpha_optimizer
 )

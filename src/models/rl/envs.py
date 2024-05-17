@@ -29,12 +29,12 @@ class PretrainEnv:
         self.step_length = args.ltm_params.step_length
         self.global_step = 0
         self.transformation_layer = None
-        # self.transform_matrix = torch.randn((self.ltm_model.d_embd, self.memory_module.d_mem))  # [d_mem, d_embd]
+        self.transform_matrix = torch.randn((self.memory_module.d_mem, self.ltm_model.d_embd))  # [d_mem, d_embd]
 
     def compute_dist(self, aggregate_fn: str = "min"):
         with torch.no_grad():
-            transformed_embeddings = self.transformation_layer(self.embeddings)  # [num_vectors, d_embd]
-            transformed_memory = self.memory_module.memory.unsqueeze(2)
+            transformed_embeddings = self.embeddings  # [num_vectors, d_embd]
+            transformed_memory = torch.tanh((self.memory_module.memory @ self.transform_matrix)).unsqueeze(2)
             dists = torch.linalg.norm(transformed_memory - transformed_embeddings.unsqueeze(1).cpu(), dim=-1)
         if aggregate_fn == "min":
             return torch.min(dists, -1).values
