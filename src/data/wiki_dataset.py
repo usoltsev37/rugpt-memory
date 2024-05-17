@@ -3,7 +3,7 @@ import pickle
 import random
 import os
 from pathlib import Path
-
+from transformers.trainer_utils import set_seed
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer
@@ -13,8 +13,6 @@ class NextFile():
     Synchronous generation of next available file name.
     """
 
-    # filesPerDir = 100
-
     def __init__(self, path_name, extension = ".jsonl"):
         self.path_name = path_name
         self.extension = extension
@@ -23,7 +21,6 @@ class NextFile():
 
     def next(self):
         self.file_index = self.file_index + 1
-        # self.file_index = (self.file_index + 1) % NextFile.filesPerDir
         if self.file_index == 0:
             self.dir_index += 1
         dirname = self._dirname()
@@ -33,9 +30,6 @@ class NextFile():
 
     def _dirname(self):
         return self.path_name
-        # char1 = self.dir_index % 26
-        # char2 = int(self.dir_index / 26) % 26
-        # return os.path.join(self.path_name, '%c%c' % (ord('A') + char2, ord('A') + char1))
 
     def _filepath(self):
         name = '%s/part_%02d' % (self._dirname(), self.file_index)
@@ -94,7 +88,11 @@ class WikiDataset(Dataset):
             self.prepare_dataset()
 
         self.id_to_offset, self.ids = self._load_index()
-        # self.save_dataset()
+        
+        print(f"Len of split: {len(self.id_to_offset)}")
+        print(f"Number of examples: {len(self.ids)}")
+        
+        self.save_dataset()
         
         self.length = len(self.ids)
         self.current_file = None
@@ -187,7 +185,7 @@ class WikiDataset(Dataset):
         # Get validation set
         random.shuffle(test_ids)
         split_idx = int(len(test_ids) * 0.5)
-        val_ids, test_ids = ids[:split_idx], ids[split_idx:]
+        val_ids, test_ids = test_ids[:split_idx], test_ids[split_idx:]
 
         train_index = {
             "index": {id_: index[id_] for id_ in train_ids},
@@ -297,3 +295,6 @@ class WikiDataset(Dataset):
     #         article = json.loads(f.readline())
     #         return self._add_context_to_article(article)
 
+set_seed(42)
+dataset_path = (Path('.') / "data" / "dataset").resolve()
+train_dataset = WikiDataset(data_path=str(dataset_path), split="test")
