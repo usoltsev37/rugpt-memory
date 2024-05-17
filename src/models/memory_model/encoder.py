@@ -41,7 +41,7 @@ class EncoderBlock(nn.Module):
     def __init__(
         self,
         d_embd: int = 768,
-        n_head: int = 4,
+        n_head: int = 12,
         dtype: torch.dtype = torch.float32,
         dropout: float = 0.0,
     ) -> None:
