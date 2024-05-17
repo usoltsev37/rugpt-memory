@@ -36,13 +36,13 @@ pretrain_params:
 
 rl_params:
   alpha_lr: 1e-4
-  batches_per_update: 8
+  batches_per_update: 6
   batch_size: 64
   clip: 0.2
   clip_grad_norm: 1.0
   alpha_start: -6
   gamma: 0.99
-  kl_target: 2.
+  kl_target: 3.
   min_transitions_per_update: 256
   num_prefixes_for_reward_calc: 3
   target_entropy: -10
