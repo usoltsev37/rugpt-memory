@@ -69,7 +69,7 @@ def sample_episodes(env: PretrainEnv, reinforce: REINFORCE, data: dict, train_co
             trajectories.append([state, action, reward, log_proba, distr])
             state = next_state
             logger.info("-" * 50)
-            
+
     logger.info(">" * 50)
     reinforce.agent.model.train()
     return compute_rewards(trajectories, train_config.gamma)  # There is no reward for the last step
@@ -90,7 +90,6 @@ def pretrain(env, reinforce, args, train_dataloader):
 
     batch_buffer, num_transitions_in_buffer = [], 0
     transitions_reward = []
-    
 
     cur_transitions = args.pretrain_params.episode_max_steps * args.trainer_args.batch_size
 
