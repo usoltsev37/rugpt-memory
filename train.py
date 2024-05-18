@@ -44,7 +44,7 @@ class Trainer:
         reinforce,
         memory_module,
         train_dataset,
-        val_dataset,
+        # val_dataset,
         args,
     ):
         self.args = args
@@ -55,17 +55,17 @@ class Trainer:
         self.memory_module = memory_module
 
         self.train_dataset = train_dataset
-        self.eval_dataset = val_dataset
+        # self.eval_dataset = val_dataset
         self.tokenizer = tokenizer
 
-        self.eval_dataloader = self.get_eval_dataloader()
         self.train_dataloader = self.get_train_dataloader()
 
         self.ltm_clip_grad_norm = args.trainer_args.ltm_clip_grad_norm
 
     def get_eval_dataloader(self):
+        val_dataset = WikiDataset(data_path=str(dataset_path), split="val")
         return EpochDataloader(
-            self.eval_dataset,
+            val_dataset,
             self.tokenizer,
             step_length=self.args.ltm_params.step_length,
             batch_size=self.args.trainer_args.batch_size,
@@ -128,7 +128,7 @@ class Trainer:
 
         it, total_loss = 0, 0.0
         with torch.no_grad():
-            for i, batch in enumerate(self.eval_dataloader):
+            for i, batch in enumerate(self.get_eval_dataloader()):
                 if 0 < self.args.max_eval_steps <= i:
                     break
                 loss = self._evaluate(batch)
@@ -305,7 +305,7 @@ class Trainer:
                             f"""Training cycle {self.cycle} done.\nLTM train loss: {ltm_loss:.4f}\nMemory model loss: {memory_model_loss:.4f}\nMemory model reward: {memory_model_reward:.4f}"""
                         )
 
-                        if not self.cycle % 30:
+                        if not self.cycle % 15:
                             val_loss = self.evaluate()
                             logger.info(f"\nLTM val loss: {val_loss}")
                             tensorboard_writer.add_scalar("Loss/LTM_val", val_loss, self.cycle)
@@ -426,7 +426,7 @@ if __name__ == "__main__":
     ###############################################################################
     dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
     train_dataset = WikiDataset(data_path=str(dataset_path), split="train")
-    val_dataset = WikiDataset(data_path=str(dataset_path), split="val")
+    # val_dataset = WikiDataset(data_path=str(dataset_path), split="val")
 
     ###############################################################################
     # Train
@@ -440,7 +440,7 @@ if __name__ == "__main__":
         reinforce=reinforce,
         memory_module=memory_module,
         train_dataset=train_dataset,
-        val_dataset=val_dataset,
+        # val_dataset=val_dataset,
         args=args,
     )
 
