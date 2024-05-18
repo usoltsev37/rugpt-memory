@@ -32,6 +32,7 @@ class PretrainEnv:
         self.transform_matrix = torch.randn((self.memory_module.d_mem, self.ltm_model.d_embd)).to(
             "cuda:0"
         )  # [d_mem, d_embd]
+        torch.nn.init.orthogonal_(self.transform_matrix)
 
     def compute_dist(self, aggregate_fn: str = "min"):
         with torch.no_grad():
