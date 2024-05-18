@@ -99,7 +99,6 @@ def evaluate(ltm_model):
             loss = _evaluate(batch)
             total_loss += loss
             it += 1
-
     return total_loss / it
 
 
@@ -133,7 +132,7 @@ def train_ltm_on_episode(ltm_model, ltm_optimizer, memory_module, data: dict, lt
     return episode_loss / token_count
 
 
-def pretrain(ltm_model, ltm_optimizer, memory_module, train_dataloader, val_dataloader, args):
+def pretrain(ltm_model, ltm_optimizer, memory_module, train_dataloader, args):
     logger.info("Start LTM pretraining...")
     global cur_iter
     global best_val_loss
@@ -215,7 +214,7 @@ memory_module = MemoryModule(
 ###############################################################################
 dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
 train_dataset = WikiDataset(data_path=str(dataset_path), split="train")
-val_dataset = WikiDataset(data_path=str(dataset_path), split="val")
+# val_dataset = WikiDataset(data_path=str(dataset_path), split="val")
 
 train_dataloader = EpochDataloader(
     dataset=train_dataset,
@@ -226,15 +225,15 @@ train_dataloader = EpochDataloader(
     # num_workers=2,
     pin_memory=True,
 )
-val_dataloader = EpochDataloader(
-    dataset=val_dataset,
-    tokenizer=tokenizer,
-    step_length=args.ltm_params.step_length,
-    batch_size=args.trainer_args.batch_size,
-    shuffle=True,
-    # num_workers=2,
-    pin_memory=True,
-)
+# val_dataloader = EpochDataloader(
+#     dataset=val_dataset,
+#     tokenizer=tokenizer,
+#     step_length=args.ltm_params.step_length,
+#     batch_size=args.trainer_args.batch_size,
+#     shuffle=True,
+#     # num_workers=2,
+#     pin_memory=True,
+# )
 
 
 def create_dataloader(split="val"):
@@ -258,6 +257,6 @@ pretrain(
     ltm_optimizer=optimizer,
     memory_module=memory_module,
     train_dataloader=train_dataloader,
-    val_dataloader=val_dataloader,
+    # val_dataloader=val_dataloader,
     args=args,
 )
