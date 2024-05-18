@@ -87,10 +87,10 @@ def _evaluate(data: dict) -> torch.Tensor:
     return episode_loss / token_count
 
 
-def evaluate(val_dataloader, ltm_model):
+def evaluate(ltm_model):
     ltm_model.freeze()
     torch.cuda.empty_cache()
-
+    val_dataloader = create_dataloader("val")
     it, total_loss = 0, 0.0
     with torch.no_grad():
         for i, batch in enumerate(val_dataloader):
@@ -149,7 +149,7 @@ def pretrain(ltm_model, ltm_optimizer, memory_module, train_dataloader, val_data
         tensorboard_writer.add_scalar("Loss/LTM iteration loss", ltm_loss, cur_iter)
 
         if not cur_iter % args.checkpoint_interval:
-            ltm_val_loss = evaluate(val_dataloader=val_dataloader, ltm_model=ltm_model)
+            ltm_val_loss = evaluate(ltm_model=ltm_model)
             ltm_model.unfreeze()
             logger.info(f"""Evaluation on {cur_iter} done.\nLTM val loss: {ltm_val_loss:.4f}""")
             tensorboard_writer.add_scalar("Loss/LTM val loss", ltm_val_loss, cur_iter)
@@ -235,6 +235,20 @@ val_dataloader = EpochDataloader(
     # num_workers=2,
     pin_memory=True,
 )
+
+
+def create_dataloader(split="val"):
+    val_dataset = WikiDataset(data_path=str(dataset_path), split="val")
+    return EpochDataloader(
+        dataset=val_dataset,
+        tokenizer=tokenizer,
+        step_length=args.ltm_params.step_length,
+        batch_size=args.trainer_args.batch_size,
+        shuffle=True,
+        # num_workers=2,
+        pin_memory=True,
+    )
+
 
 ###############################################################################
 # Pretrain

@@ -1,9 +1,9 @@
 checkpoint_base_cache_dir: /home/ybelova/repos/rugpt-memory/checkpoints/base/huggingface
 checkpoint_dir: /media/public/ybelova/rugpt-memory/checkpoints/pretrain_ltm
-checkpoint_interval: 30
+checkpoint_interval: 20
 content_dir: '.'
-experiment_name: base
-description: "Correct everything, new dataset"
+experiment_name: base:correct_eval:inc_lr
+description: "Correct everything, new dataset. Correct evaluation in temrs of dataloader. Increase lr"
 log_dir: /home/ybelova/repos/rugpt-memory/logs/runs/pretrain_ltm
 max_checkpoints: 1
 max_eval_steps: 200
@@ -27,7 +27,7 @@ trainer_args:
   batch_size: 16
   num_train_epochs: 1
   ltm_clip_grad_norm: 1.0
-  ltm_learning_rate: 2e-5
+  ltm_learning_rate: 4e-5
   ltm_model_iterations: 15
   memory_model_learning_rate: 2e-5
   memory_model_iterations: 15
