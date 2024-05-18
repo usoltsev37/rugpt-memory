@@ -73,8 +73,8 @@ def train_rl(data: list[dict], env, reinforce, train_config: TrainingArguments, 
     for batch in data:
         batch_traj, rewards_in_episode = sample_episodes(env, reinforce, batch, train_config.rl_params)
         transitions.extend(batch_traj)
-        rewards += rewards_in_episode[-1].mean().item() * len(rewards_in_episode)
-        total_steps += len(rewards_in_episode)
+        rewards += rewards_in_episode[-1] / len(rewards_in_episode)
+        total_steps += 1
 
     mean_loss = reinforce.update(transitions, tensorboard_writer, iter)
 
