@@ -101,8 +101,8 @@ def pretrain(env, reinforce, args, train_dataloader):
             batch_buffer.append(batch)
             transitions = []
             for batch in batch_buffer:
-                new_transitions, mean_reward = sample_episodes(env, reinforce, batch, args.rl_params)
-                transitions_reward.append(mean_reward)
+                new_transitions, rewards_in_episode = sample_episodes(env, reinforce, batch, args.rl_params)
+                transitions_reward.append((rewards_in_episode[-1] / len(rewards_in_episode)).mean().item())
                 transitions.extend(new_transitions)
             mean_loss = reinforce.update(transitions, tensorboard_writer, cur_iter)
             tensorboard_writer.add_scalar("Loss/memory_model", mean_loss, cur_iter)

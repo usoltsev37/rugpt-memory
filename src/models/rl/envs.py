@@ -29,15 +29,17 @@ class PretrainEnv:
         self.step_length = args.ltm_params.step_length
         self.global_step = 0
         self.transformation_layer = None
-        self.transform_matrix = torch.randn((self.ltm_model.d_embd, self.memory_module.d_mem)).to(
+        self.transform_matrix = torch.randn((self.memory_module.d_mem, self.ltm_model.d_embd)).to(
             "cuda:0"
         )  # [d_mem, d_embd]
 
     def compute_dist(self, aggregate_fn: str = "min"):
         with torch.no_grad():
-            transformed_embeddings = torch.tanh(self.embeddings @ self.transform_matrix)  # [num_vectors, d_embd]
-            transformed_memory = self.memory_module.memory.unsqueeze(2)
-            dists = torch.linalg.norm(transformed_memory - transformed_embeddings.unsqueeze(1).cpu(), dim=-1)
+            transformed_embeddings = torch.tanh(self.embeddings)  # [num_vectors, d_embd]
+            transformed_memory = torch.tanh((self.memory_module.memory.to("cuda:0") @ self.transform_matrix)).unsqueeze(
+                2
+            )
+            dists = torch.linalg.norm(transformed_memory - transformed_embeddings.unsqueeze(1), dim=-1)
         if aggregate_fn == "min":
             return torch.min(dists, -1).values
         elif aggregate_fn == "max":
@@ -80,7 +82,7 @@ class PretrainEnv:
         self.memory_module.update(action=action)
 
         cur_dist = self.compute_dist(self.aggregate_fn).sum(-1)
-        reward = self.prev_dist - cur_dist
+        reward = (self.prev_dist - cur_dist).cpu()
         self.prev_dist = cur_dist
 
         done = True if self.cur_step == self.episode_max_steps else False
