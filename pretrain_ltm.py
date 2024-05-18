@@ -65,7 +65,7 @@ def _evaluate(data: dict) -> torch.Tensor:
     batch_size, num_steps, _ = data["input_ids"].size()
     episode_loss = 0.0
     token_count = 0
-    
+
     memory_module.reset(batch_size)
 
     for step in range(num_steps):
@@ -122,7 +122,7 @@ def train_ltm_on_episode(ltm_model, ltm_optimizer, memory_module, data: dict, lt
             loss.backward()
             nn.utils.clip_grad_norm_(ltm_model.parameters(), ltm_clip_grad_norm)
             ltm_optimizer.step()
-            
+
             num_tokens_in_segment = attention_mask[0].sum(-1)
             episode_loss += loss.item() * num_tokens_in_segment
             token_count += num_tokens_in_segment
@@ -145,13 +145,13 @@ def pretrain(ltm_model, ltm_optimizer, memory_module, train_dataloader, val_data
         ltm_loss = train_ltm_on_episode(
             ltm_model, ltm_optimizer, memory_module, batch, args.trainer_args.ltm_clip_grad_norm
         )
-        logger.info(f"""Training iteration {cur_iter} done.\nLTM train loss: {ltm_loss}""")
+        logger.info(f"""Training iteration {cur_iter} done.\nLTM train loss: {ltm_loss:.4f}""")
         tensorboard_writer.add_scalar("Loss/LTM iteration loss", ltm_loss, cur_iter)
 
-        if not cur_iter % 20:
+        if not cur_iter % args.checkpoint_interval:
             ltm_val_loss = evaluate(val_dataloader=val_dataloader, ltm_model=ltm_model)
             ltm_model.unfreeze()
-            logger.info(f"""Evaluation on {cur_iter} done.\nLTM val loss: {ltm_loss}""")
+            logger.info(f"""Evaluation on {cur_iter} done.\nLTM val loss: {ltm_val_loss:.4f}""")
             tensorboard_writer.add_scalar("Loss/LTM val loss", ltm_val_loss, cur_iter)
             save_checkpoint(ltm_val_loss)
 
@@ -223,7 +223,7 @@ train_dataloader = EpochDataloader(
     step_length=args.ltm_params.step_length,
     batch_size=args.trainer_args.batch_size,
     shuffle=True,
-    num_workers=2,
+    # num_workers=2,
     pin_memory=True,
 )
 val_dataloader = EpochDataloader(
@@ -232,7 +232,7 @@ val_dataloader = EpochDataloader(
     step_length=args.ltm_params.step_length,
     batch_size=args.trainer_args.batch_size,
     shuffle=True,
-    num_workers=2,
+    # num_workers=2,
     pin_memory=True,
 )
 

@@ -29,7 +29,7 @@ def compute_rewards(trajectory: list[list], gamma: float):
     return [
         (state, action, reward, log_proba, distr)
         for (state, action, _, log_proba, distr), reward in zip(trajectory, reversed(rewards))
-    ], rewards[-1].mean().item()
+    ], rewards
 
 
 def sample_episodes(env: LTMEnvironment, reinforce: REINFORCE, data: dict, train_config: RLParams) -> [tuple]:
@@ -67,13 +67,15 @@ def train_rl(data: list[dict], env, reinforce, train_config: TrainingArguments, 
     reinforce.agent.model.eval()
 
     transitions = []
-    rewards = []
+    rewards = 0.
+    total_steps = 0
 
     for batch in data:
-        batch_traj, mean_reward = sample_episodes(env, reinforce, batch, train_config.rl_params)
+        batch_traj, rewards_in_episode = sample_episodes(env, reinforce, batch, train_config.rl_params)
         transitions.extend(batch_traj)
-        rewards.append(mean_reward)
+        rewards += rewards_in_episode[-1].mean().item() * len(rewards_in_episode)
+        total_steps += len(rewards_in_episode)
 
     mean_loss = reinforce.update(transitions, tensorboard_writer, iter)
 
-    return mean_loss, np.mean(rewards)
+    return mean_loss, rewards / total_steps
