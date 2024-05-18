@@ -2,7 +2,8 @@ import torch
 import numpy as np
 from src.models.ltm_gpt.ltm_gpt import LTM_GPT
 from src.models.rl.reinforce import Agent
-from src.models.rl.envs import LTMEnvironment
+
+# from src.models.rl.envs import LTMEnvironment
 from src.models.rl.reinforce import REINFORCE
 from src.utils.train_config import RLParams, TrainingArguments
 
@@ -32,7 +33,7 @@ def compute_rewards(trajectory: list[list], gamma: float):
     ], rewards
 
 
-def sample_episodes(env: LTMEnvironment, reinforce: REINFORCE, data: dict, train_config: RLParams) -> [tuple]:
+def sample_episodes(env, reinforce: REINFORCE, data: dict, train_config: RLParams) -> [tuple]:
     """
     Samples an episode of interaction between an reinforce and an environment,
     then computes and returns the discounted rewards for each step in the episode.
