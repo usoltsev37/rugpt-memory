@@ -63,6 +63,7 @@ class TrainingArguments:
     checkpoint_base_cache_dir: str
     checkpoint_dir: str
     checkpoint_interval: int
+    checkpoint_memory_model: str
     content_dir: str
     experiment_name: str
     description: str

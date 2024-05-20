@@ -311,9 +311,7 @@ class Trainer:
                             tensorboard_writer.add_scalar("Loss/LTM_val", val_loss, self.cycle)
 
                         tensorboard_writer.add_scalar("Loss/LTM_train", ltm_loss, self.cycle)
-                        tensorboard_writer.add_scalar(
-                            "Loss/MemoryModel", memory_model_loss, self.cycle
-                        )
+                        tensorboard_writer.add_scalar("Loss/MemoryModel", memory_model_loss, self.cycle)
                         tensorboard_writer.add_scalar("Reward/cycle", memory_model_reward, self.cycle)
 
                         if not self.cycle % self.args.checkpoint_interval:
@@ -376,9 +374,9 @@ if __name__ == "__main__":
     # logger.info("Reloaded weigths for pretrained LTM!")
 
     memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=ltm_model.dtype)
-    # checkpoint = "/media/public/ybelova/rugpt-memory/checkpoints/pretrain_agent/correct_ltm:dec_lr/runs/checkpoint-10000/memory_model.pt"
-    # state_dict = torch.load(checkpoint)["model_parameters"]
-    # memory_model.load_state_dict(state_dict)
+    checkpoint = Path(args.checkpoint_memory_model) / "memory_model.pt"
+    state_dict = torch.load(checkpoint)["model_parameters"]
+    memory_model.load_state_dict(state_dict)
 
     ###############################################################################
     # Create optimizers
