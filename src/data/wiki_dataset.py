@@ -1,13 +1,73 @@
 import json
 import pickle
 import random
+import os
 from pathlib import Path
-
+from transformers.trainer_utils import set_seed
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer
 
+class NextFile():
+    """
+    Synchronous generation of next available file name.
+    """
 
+    def __init__(self, path_name, extension = ".jsonl"):
+        self.path_name = path_name
+        self.extension = extension
+        self.dir_index = -1
+        self.file_index = -1
+
+    def next(self):
+        self.file_index = self.file_index + 1
+        if self.file_index == 0:
+            self.dir_index += 1
+        dirname = self._dirname()
+        if not os.path.isdir(dirname):
+            os.makedirs(dirname)
+        return self._filepath()
+
+    def _dirname(self):
+        return self.path_name
+
+    def _filepath(self):
+        name = '%s/part_%02d' % (self._dirname(), self.file_index)
+        return name + self.extension
+
+
+class OutputSplitter():
+    """
+    File-like object, that splits output to multiple files of a given max size.
+    """
+
+    def __init__(self, nextFile, max_file_size=0, compress=False):
+        """
+        :param nextFile: a NextFile object from which to obtain filenames
+            to use.
+        :param max_file_size: the maximum size of each file.
+        :para compress: whether to write data with bzip compression.
+        """
+        self.nextFile = nextFile
+        self.compress = compress
+        self.max_file_size = max_file_size
+        self.file = self.open(self.nextFile.next())
+
+    def reserve(self, size):
+        if self.file.tell() + size > self.max_file_size:
+            self.close()
+            self.file = self.open(self.nextFile.next())
+
+    def write(self, data):
+        self.reserve(len(data))
+        self.file.write(data)
+
+    def close(self):
+        self.file.close()
+
+    def open(self, filename):
+        return open(filename, 'w')
+        
 class WikiDataset(Dataset):
     def __init__(self, data_path: str, n_context: int = 1, split: str = "train", shuffle_context: bool = True) -> None:
         """
@@ -28,7 +88,26 @@ class WikiDataset(Dataset):
             self.prepare_dataset()
 
         self.id_to_offset, self.ids = self._load_index()
+        
+        # print(f"Len of split: {len(self.id_to_offset)}")
+        # print(f"Number of examples: {len(self.ids)}")
+        
+        # self.save_dataset()
+        
         self.length = len(self.ids)
+        self.current_file = None
+        self.current_file_index = 0
+        self.file_paths = list((self.data_path / "dataset_with_sampled_context" / split).rglob('*'))
+        self.load_next_file()
+        
+    def load_next_file(self):
+        if self.current_file:
+            self.current_file.close()
+        if self.current_file_index < len(self.file_paths):
+            self.current_file = open(self.file_paths[self.current_file_index], 'r')
+            self.current_file_index += 1
+        else:
+            self.current_file = None
 
     def prepare_dataset(self):
         """
@@ -49,9 +128,10 @@ class WikiDataset(Dataset):
             with part_file.open("rb") as f:
                 for line in f:
                     article = json.loads(line)
-
+    
                     # Check if there are no links for the article
                     usable = False
+                    
                     for link_list in article["links"]:
                         if link_list:
                             usable = True
@@ -59,13 +139,39 @@ class WikiDataset(Dataset):
 
                     # If the article is very short (<300 tokens), we are not going to use it for the training (as context it's ok)
                     len_article = tokenizer("".join(article["texts"]), return_length=True)["length"][0]
-                    if len_article < 300:
+                    if len_article < 1024:
                         usable = False
 
                     index[article["document_id"]] = (part_file.name, offset, usable)
                     offset += len(line)
 
         return index
+    
+
+    def save_dataset(self, ):
+        print("Saving dataset...")
+        dataset_path = Path(self.data_path) / "dataset_with_sampled_context" / self.split
+        dataset_path.mkdir(exist_ok=True, parents=True)
+        
+        nextFile = NextFile(dataset_path)
+        out = OutputSplitter(nextFile, 1024 * 1024 * 200)
+        
+        for article_id in tqdm(self.ids, total=len(self.ids)):
+            path_to_file, offset, _ = self.id_to_offset[article_id]
+            
+            full_path_to_file = Path(self.data_path) / path_to_file
+            
+            with full_path_to_file.open("rb") as f:
+                f.seek(offset)
+                article = json.loads(f.readline())
+                article_with_context = self._add_context_to_article(article)
+                sample = {"title": article["title"], "text": article_with_context}
+                json_article = json.dumps(sample, ensure_ascii=False)
+                out.write(json_article + '\n')
+        
+        out.close()
+        print(f"Dataset saved to {dataset_path}!")
+
 
     def train_test_split(self, index: dict, train_size: float = 0.8) -> None:
         """
@@ -79,7 +185,7 @@ class WikiDataset(Dataset):
         # Get validation set
         random.shuffle(test_ids)
         split_idx = int(len(test_ids) * 0.5)
-        val_ids, test_ids = ids[:split_idx], ids[split_idx:]
+        val_ids, test_ids = test_ids[:split_idx], test_ids[split_idx:]
 
         train_index = {
             "index": {id_: index[id_] for id_ in train_ids},
@@ -156,17 +262,39 @@ class WikiDataset(Dataset):
 
         result = [article["title"], *contexts, "".join(article["texts"])]
         return "\n".join(result)
+    
+    def __getitem__(self, idx):
+        if self.current_file is None:
+            raise StopIteration("No more data available")
 
-    def __getitem__(self, item) -> str:
-        """
-        Retrieves an article by index, adding context to its sections.
-        :param item: The index of the article in the dataset.
-        :return: The text of the article with context added to each section.
-        """
-        article_id = self.ids[item]
-        path_to_file, offset, _ = self.id_to_offset[article_id]
-        full_path_to_file = Path(self.data_path) / path_to_file
-        with full_path_to_file.open("rb") as f:
-            f.seek(offset)
-            article = json.loads(f.readline())
-            return self._add_context_to_article(article)
+        line = self.current_file.readline()
+
+        if not line:
+            self.load_next_file()
+            return self.__getitem__(idx)  # Recursively call to get next item from the next file
+        
+        article = json.loads(line)
+        return article["text"]
+    
+    def __del__(self):
+        if self.current_file:
+            self.current_file.close()
+
+
+    # def __getitem__(self, item) -> str:
+    #     """
+    #     Retrieves an article by index, adding context to its sections.
+    #     :param item: The index of the article in the dataset.
+    #     :return: The text of the article with context added to each section.
+    #     """
+    #     article_id = self.ids[item]
+    #     path_to_file, offset, _ = self.id_to_offset[article_id]
+    #     full_path_to_file = Path(self.data_path) / path_to_file
+    #     with full_path_to_file.open("rb") as f:
+    #         f.seek(offset)
+    #         article = json.loads(f.readline())
+    #         return self._add_context_to_article(article)
+
+# set_seed(42)
+# dataset_path = (Path('.') / "data" / "dataset").resolve()
+# train_dataset = WikiDataset(data_path=str(dataset_path), split="test")

@@ -50,6 +50,7 @@ def save_checkpoint():
 def _evaluate(data: dict) -> torch.Tensor:
     _, num_steps, _ = data["input_ids"].size()
     episode_loss = 0.0
+    episode_token_count = 0
 
     for step in range(num_steps):
         # FULL SEGMENT!
@@ -65,14 +66,17 @@ def _evaluate(data: dict) -> torch.Tensor:
                     labels=labels, 
                     return_dict=True)
         
-        episode_loss += out["loss"].item()
+        num_tokens_in_segment = attention_mask[0].sum(-1)
+        episode_token_count += num_tokens_in_segment
+        episode_loss += out["loss"].item() * num_tokens_in_segment
+        
 
-    return episode_loss / num_steps
+    return episode_loss / episode_token_count
 
 def evaluate():
     model.eval()
     torch.cuda.empty_cache()
-
+    val_dataloader = create_val_dataloader()
     it, total_loss = 0, 0.0
     with torch.no_grad():
         for i, batch in enumerate(val_dataloader):
@@ -88,6 +92,7 @@ def train_on_episode(data):
 
     episode_loss = 0.0
     _, num_steps, _ = data["input_ids"].size()
+    episode_token_count = 0
 
     for step in range(num_steps):
         input_ids, attention_mask = crop_batch(
@@ -107,10 +112,12 @@ def train_on_episode(data):
 
         optimizer.step()
         optimizer.zero_grad()
+        
+        num_tokens_in_segment = attention_mask[0].sum(-1)
+        episode_token_count += num_tokens_in_segment
+        episode_loss += out["loss"].item() * num_tokens_in_segment
 
-        episode_loss += out["loss"].item()
-
-    return episode_loss / num_steps
+    return episode_loss / episode_token_count
 
 def train():
     global train_step
@@ -180,27 +187,30 @@ if __name__ == "__main__":
     ###############################################################################
     dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
     train_dataset = WikiDataset(data_path=str(dataset_path), split="train")
-    val_dataset = WikiDataset(data_path=str(dataset_path), split="val")
+    
+    def create_val_dataloader():
+        val_dataset = WikiDataset(data_path=str(dataset_path), split="val")
+        return EpochDataloader(
+            val_dataset,
+            tokenizer,
+            step_length=args.ltm_params.step_length,
+            batch_size=args.trainer_args.batch_size,
+            shuffle=False,
+            # num_workers=2,
+            pin_memory=True,
+        )
     
     train_dataloader = EpochDataloader(
             train_dataset,
             tokenizer,
             step_length=args.ltm_params.step_length,
             batch_size=args.trainer_args.batch_size,
-            shuffle=True,
-            num_workers=2,
+            shuffle=False,
+            # num_workers=2,
             pin_memory=True,
         )
     
-    val_dataloader =  EpochDataloader(
-            val_dataset,
-            tokenizer,
-            step_length=args.ltm_params.step_length,
-            batch_size=args.trainer_args.batch_size,
-            shuffle=False,
-            num_workers=2,
-            pin_memory=True,
-        )
+
 
     ###############################################################################
     # Train
