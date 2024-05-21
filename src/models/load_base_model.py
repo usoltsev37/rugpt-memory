@@ -35,16 +35,7 @@ def load_base_model(main_config):
     tokenizer.padding_side = "right"
 
     if main_config.base_model_params.add_lora:
-        modules_to_add_lora = ["attn.c_attn", "attn.c_proj", "mlp.c_fc", "mlp.c_proj"]
-        cnt_blocks_with_memory = main_config.ltm_params.cnt_blocks_with_memory
-        num_layers = len(model.transformer.h)
-        target_modules = [
-            f"transformer.h.{num_layers - i - 1}.{module}"
-            for module in modules_to_add_lora
-            for i in range(cnt_blocks_with_memory)
-        ]
-        peft_config = peft.LoraConfig(
-            target_modules=target_modules, inference_mode=False, r=8, lora_alpha=16, lora_dropout=0.1
+        peft_config = peft.LoraConfig(inference_mode=False, r=8, lora_alpha=16, lora_dropout=0.1
         )
         model = peft.get_peft_model(model, peft_config).base_model.model
 

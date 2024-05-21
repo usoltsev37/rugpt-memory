@@ -1,17 +1,19 @@
-batch_size: 8
+batch_size: 16
 checkpoint_base_cache_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/base/huggingface
 content_dir: '.'
-experiment_name: eval_trained_models
-description: "Fisrt evaluation of traiened models ON NEW DATASET. Evaluate on full segments by ppl and CEL"
+experiment_name: base:all_segments:full_segments
+full_segment: true
+description: "Evaluation of base pretrained llm"
 log_dir: /home/akarpov/jbelova/rugpt-memory/logs/runs/eval/
+last_segments: false
 pretrained_model_name_or_path: ai-forever/rugpt3small_based_on_gpt2
-pretrained_model_path: "/home/akarpov/jbelova/rugpt-memory/checkpoints/20240512-013530_devbox-X470-AORUS-ULTRA-GAMING/runs/checkpoint-20"
+pretrained_model_path: "/home/akarpov/jbelova/rugpt-memory/checkpoints/pretrain_base/pretrain_base:new_dataset:second_start/runs/checkpoint-8400"
 seed: 42   
 
 base_model_params:
   load_in_4bit: false
   load_in_8bit: false
-  add_lora: false
+  add_lora: true
 
 memory_model_params:
   device: cuda:0
