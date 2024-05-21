@@ -1,6 +1,6 @@
 checkpoint_base_cache_dir: /home/ybelova/repos/rugpt-memory/checkpoints/base/huggingface
 checkpoint_dir: /media/public/ybelova/rugpt-memory/checkpoints/pretrain_ltm
-checkpoint_interval: 30
+checkpoint_interval: 200
 content_dir: '.'
 experiment_name: base:correct_eval:inc_lr_new
 description: "Correct everything, new dataset. Correct evaluation in temrs of dataloader. Increase lr"
