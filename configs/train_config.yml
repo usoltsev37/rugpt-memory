@@ -1,8 +1,8 @@
 checkpoint_base_cache_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/base/huggingface
 checkpoint_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/pretrain_base/
-checkpoint_interval: 50
+checkpoint_interval: 100
 content_dir: '.'
-experiment_name: pretrain_base:new_dataset
+experiment_name: pretrain_base:new_dataset:second_start
 description: "Correct ltm model and memory model."
 log_dir: /home/akarpov/jbelova/rugpt-memory/logs/runs/pretrain_base/
 max_checkpoints: 1

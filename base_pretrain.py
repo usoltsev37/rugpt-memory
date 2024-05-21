@@ -122,6 +122,8 @@ def train_on_episode(data):
 def train():
     global train_step
     for train_step, batch in enumerate(tqdm(train_dataloader, total=len(train_dataloader)), start=1):
+        if train_step < 2848:
+            continue
         train_loss = train_on_episode(batch)
         logger.info(f"Train loss on iter {train_step}: {train_loss:.4f}")
         tensorboard_writer.add_scalar("Loss/train", train_loss, train_step)
@@ -174,6 +176,9 @@ if __name__ == "__main__":
     ###############################################################################
 
     model, tokenizer = load_base_model(args)
+    checkpoint_path = "/home/akarpov/jbelova/rugpt-memory/checkpoints/pretrain_base/pretrain_base:new_dataset/runs/checkpoint-2800/base_model.pt"
+    checkpoint = torch.load(checkpoint_path)
+    model.load_state_dict(checkpoint["model_parameters"])
     model.train()
 
     ###############################################################################
@@ -181,6 +186,7 @@ if __name__ == "__main__":
     ###############################################################################
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.trainer_args.lr)
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
     ###############################################################################
     # Load data
