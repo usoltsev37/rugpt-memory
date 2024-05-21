@@ -40,48 +40,27 @@ from src.utils.eval_utils import format_log
 def _evaluate(data: dict) -> torch.Tensor:
     batch_size, num_steps, _ = data["input_ids"].size()
     episode_loss = 0.0
-    episode_token_count = 0
+    token_count = 0
 
     memory_module.reset(batch_size)
 
-    if not args.last_segments:
-        range_ = range(num_steps)
-    else:
-        range_ = range(num_steps - math.ceil(0.25 * num_steps), num_steps)
-
-    for step in range_:
-        if args.full_segment:
-            input_ids, attention_mask = (
-                data["input_ids"][:, step, :].contiguous(),
-                data["attention_mask"][:, step, :].contiguous(),
-            )
-        else:
-            input_ids, attention_mask = crop_batch(
-                data["input_ids"][:, step, :].contiguous(),
-                data["attention_mask"][:, step, :].contiguous(),
-            )
+    for step in range(num_steps):
+        input_ids, attention_mask = (
+            data["input_ids"][:, step, :].contiguous(),
+            data["attention_mask"][:, step, :].contiguous(),
+        )
 
         loss, embeddings = ltm_model(input_ids, attention_mask, memory_module.memory)
 
-        num_tokens_in_segment = attention_mask[0].sum(-1)
-        episode_token_count += num_tokens_in_segment
-        episode_loss += loss.item() * num_tokens_in_segment
+        # There are no previous embeddings in the first step
+        if step != 0:
+            num_tokens_in_segment = attention_mask[0].sum(-1)
+            episode_loss += loss.item() * num_tokens_in_segment
+            token_count += num_tokens_in_segment
 
-        # Prepare action for agent
-        state = State(
-            memory=memory_module.memory,
-            attention_mask=attention_mask,
-            embeddings=embeddings,
-        )
+        memory_module.update(embeddings)
 
-        # Get new memory vectors and update memory
-        with torch.no_grad():
-            action, _, _ = agent.act(state)
-
-        # Update memory
-        memory_module.update(action)
-
-    return episode_loss / episode_token_count
+    return episode_loss / token_count
 
 
 def evaluate():
@@ -133,8 +112,8 @@ if __name__ == "__main__":
     ltm_model.load_state_dict(ltm_checkpoint)
 
     memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=ltm_model.dtype)
-    memory_model_checkpoint = torch.load(checkpoint_dir / "memory_model.pt")["model_parameters"]
-    memory_model.load_state_dict(memory_model_checkpoint)
+    # memory_model_checkpoint = torch.load(checkpoint_dir / "memory_model.pt")["model_parameters"]
+    # memory_model.load_state_dict(memory_model_checkpoint)
 
     ltm_model.freeze()
     memory_model.freeze()
