@@ -60,7 +60,7 @@ args = init_arguments()
 args = load_config(args.config)
 set_seed(args.seed)
     
-checkpoint = '/home/akarpov/jbelova/rugpt-memory/checkpoints/20240511-025438_devbox-X470-AORUS-ULTRA-GAMING/runs/checkpoint-110'
+checkpoint = '/home/akarpov/jbelova/rugpt-memory/checkpoint-370'
 
 ltm_model, tokenizer = load_ltm_model(args)
 state_dict = torch.load(checkpoint + "/ltm.pt")["model_parameters"]
@@ -82,6 +82,7 @@ memory_module = MemoryModule(
 agent = Agent(memory_model)
 ltm_model = LTMModel(ltm_model, configuration)
 ltm_model.model.memory = memory_module
+ltm_model.generation_config.pad_token_id = tokenizer.pad_token_id
 
 dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
 test_dataset = WikiDataset(data_path=str(dataset_path), split="test")
@@ -91,15 +92,13 @@ dataloader = EpochDataloader(
     step_length=args.ltm_params.step_length,
     batch_size=1,
     shuffle=True,
-    num_workers=2,
+    # num_workers=2,
     pin_memory=True,
 )
 it = iter(dataloader)
-data = it.__next__()
+for _ in range(40):
+    data = it.__next__()
 s = data['input_ids'].shape[1]
-while s >5:
-    data = next(it)
-    s = data['input_ids'].shape[1]
     
 bs, num_steps, _ = data['input_ids'].shape
 memory_module.reset(bs)
@@ -125,29 +124,23 @@ for step in range(num_steps - 2):
     # Update memory
     ltm_model.model.memory.update(action)
 
-print("FULL")
-for _ in range(num_steps-2):
-    print(tokenizer.decode(data['input_ids'][:, _, :][0]))
-    print()
+# print("FULL")
+# for _ in range(num_steps-2):
+#     print(tokenizer.decode(data['input_ids'][:, _, :][0]))
+#     print()
+# print("<"*100)
 
 print("GOAL")
 print(tokenizer.decode(data['input_ids'][:, -2, :][0]))
-print()
+print("<"*100)
 
 input_ids, attention_mask = (
     data["input_ids"][:, -2, :50].contiguous(),
     data["attention_mask"][:,   -2, :50].contiguous(),
 )
 # Generation!
-print("-" * 50)
-output = ltm_model.generate(input_ids=input_ids, attention_mask=attention_mask, do_sample=True, max_length=200, top_p=0.95, num_beams=1)
+output = ltm_model.generate(input_ids=input_ids, attention_mask=attention_mask, do_sample=True, max_length=100, top_p=0.9, num_beams=1)
 # tokenizer.decode(input_ids[0])
 print(tokenizer.decode(output[0][:50]))
 print("-" * 50)
 print(tokenizer.decode(output[0][50:]))
-
-
-
-
-
-
