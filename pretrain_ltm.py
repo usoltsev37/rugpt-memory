@@ -139,7 +139,7 @@ def pretrain(ltm_model, ltm_optimizer, memory_module, train_dataloader, args):
     best_val_loss = 1e6
 
     for cur_iter, batch in enumerate(tqdm(train_dataloader, total=len(train_dataloader)), start=1):
-        if batch["input_ids"].shape[1] < 2:
+        if cur_iter < iter_to_start:
             continue
         ltm_loss = train_ltm_on_episode(
             ltm_model, ltm_optimizer, memory_module, batch, args.trainer_args.ltm_clip_grad_norm
@@ -199,8 +199,14 @@ logger.info(f"Log dir: {log_dir}")
 ###############################################################################
 
 ltm_model, tokenizer = load_ltm_model(args)
+checkpoint_path = "/media/public/ybelova/rugpt-memory/checkpoints/pretrain_ltm/base:correct_eval:inc_lr_new/runs/checkpoint-6400/ltm.pt"
+checkpoint = torch.load(checkpoint_path)
+iter_to_start = checkpoint["cur_iter"]
+ltm_model.load_state_dict(checkpoint["model_parameters"])
+logger.info("Reloaded weigths for pretrained LTM!")
 ltm_model.unfreeze()
 optimizer = AdamW(ltm_model.parameters(), lr=args.trainer_args.ltm_learning_rate)
+optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
 global memory_module
 memory_module = MemoryModule(
