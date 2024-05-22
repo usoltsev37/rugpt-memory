@@ -40,6 +40,7 @@ import math
 
 def _evaluate(data: dict) -> torch.Tensor:
     _, num_steps, _ = data["input_ids"].size()
+    
     episode_loss = 0.0
     episode_token_count = 0
     if not args.last_segments:
@@ -57,7 +58,7 @@ def _evaluate(data: dict) -> torch.Tensor:
                 data["input_ids"][:, step, :].contiguous(),
                 data["attention_mask"][:, step, :].contiguous(),
             )
-            
+        
         labels = copy.deepcopy(input_ids)
         labels[labels == tokenizer.pad_token_id] = -100
 
@@ -66,10 +67,11 @@ def _evaluate(data: dict) -> torch.Tensor:
                     labels=labels, 
                     return_dict=True)
         
-        num_tokens_in_segment = attention_mask[0].sum(-1)
+        num_tokens_in_segment = attention_mask[0].sum(-1) - 1
+        
         episode_token_count += num_tokens_in_segment
         episode_loss += out["loss"].item() * num_tokens_in_segment
-        
+    
     return episode_loss / episode_token_count
 
 def evaluate():
