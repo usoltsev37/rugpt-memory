@@ -1,13 +1,12 @@
-
+import copy
 import logging
 import math
 import pickle
 import shutil
-from dataclasses import asdict
 from pathlib import Path
-import numpy as np
-import time
 
+import numpy as np
+import scipy.stats as stats
 import torch
 import torch.optim
 from torch.utils.tensorboard import SummaryWriter
@@ -16,29 +15,26 @@ from transformers.trainer_utils import set_seed
 
 from src.data.wiki_dataloader import EpochDataloader
 from src.data.wiki_dataset import WikiDataset
-from src.models.load_ltm_model import load_ltm_model
-from src.models.memory_model.memory import MemoryModule
-from src.models.memory_model.memory_model import MemoryModel
-from src.models.rl.agent import Agent
-from src.models.rl.utils import State
+from src.models.load_base_model import load_base_model
+from src.utils.eval_utils import format_log, calculate_confidence_interval, calculate_accuracy_on_batch
 from src.utils.evaluation_config import *
 from src.utils.logger_singleton import ColourFormatter, logger
-from src.utils.train_utils import create_dir_with_name, crop_batch, init_arguments
-
-from src.utils.eval_utils import format_log, calculate_confidence_interval, calculate_accuracy_on_batch
+from src.utils.train_utils import (create_dir_with_name, create_name,
+                                   crop_batch, init_arguments)
+    
 
 def _evaluate(data: dict) -> torch.Tensor:
-    batch_size, num_steps, _ = data["input_ids"].size()
+    _, num_steps, _ = data["input_ids"].size()
+    
     episode_loss = 0.0
     episode_token_count = 0
-
-    memory_module.reset(batch_size)
-
+    
+    episode_samples = 0
+    episode_correct_samples = torch.zeros(5)
     if not args.last_segments:
         range_ = range(num_steps)
     else:
         range_ = range(num_steps - math.ceil(0.25 * num_steps), num_steps)
-
     for step in range_:
         if args.full_segment:
             input_ids, attention_mask = (
@@ -50,39 +46,31 @@ def _evaluate(data: dict) -> torch.Tensor:
                 data["input_ids"][:, step, :].contiguous(),
                 data["attention_mask"][:, step, :].contiguous(),
             )
+        
+        labels = copy.deepcopy(input_ids)
+        labels[labels == tokenizer.pad_token_id] = -100
 
-        loss, embeddings = ltm_model(input_ids, attention_mask, memory_module.memory)
-
-        num_tokens_in_segment = attention_mask[0].sum(-1) - 1
-        episode_token_count += num_tokens_in_segment
-        episode_loss += loss.item() * num_tokens_in_segment
-
-        # Prepare action for agent
-        state = State(
-            memory=memory_module.memory,
-            attention_mask=attention_mask,
-            embeddings=embeddings,
-        )
-
-        # Get new memory vectors and update memory
-        with torch.no_grad():
-            action, _, _ = agent.act(state)
-
-        # Update memory
-        memory_module.update(action)
-
-    return episode_loss / episode_token_count
-
+        out = model(input_ids=input_ids.to("cuda:0"),
+                    attention_mask=attention_mask.to("cuda:0"),
+                    labels=labels, 
+                    return_dict=True)
+        
+        lm_logits = out["logits"].cpu()
+        num_correct, num_samples = calculate_accuracy_on_batch(lm_logits=lm_logits, input_ids=input_ids)
+        episode_samples += num_samples
+        episode_correct_samples += num_correct
+    
+    return episode_correct_samples, episode_samples, episode_correct_samples / episode_samples
 
 def evaluate():
-    losses = []
+    correct, cnt = torch.zeros(5), 0
     with torch.no_grad():
-        for batch in tqdm(dataloader):
-            loss = _evaluate(batch)
-            losses.append(loss)
-    return losses
-
-
+        for i, batch in enumerate(tqdm(dataloader)):
+            episode_correct_samples, episode_samples, acc = _evaluate(batch)
+            correct += episode_correct_samples
+            cnt += episode_samples
+    return correct / cnt
+    
 if __name__ == "__main__":
     ###############################################################################
     # Parse arguments and create directories
@@ -117,33 +105,15 @@ if __name__ == "__main__":
     # Build the model
     ###############################################################################
 
-    ltm_model, tokenizer = load_ltm_model(args)
-    ltm_checkpoint = torch.load(checkpoint_dir / "our_model" / "ltm.pt")["model_parameters"]
-    ltm_model.load_state_dict(ltm_checkpoint)
+    model, tokenizer = load_base_model(args)
+    checkpoint_path = Path(args.pretrained_model_path) / "base" / "base_model.pt"
+    checkpoint = torch.load(checkpoint_path)["model_parameters"]
+    model.load_state_dict(checkpoint)
+    model.eval()
 
-    memory_model = MemoryModel(**asdict(args.memory_model_params), dtype=ltm_model.dtype)
-    memory_model_checkpoint = torch.load(checkpoint_dir / "our_model" / "memory_model.pt")["model_parameters"]
-    memory_model.load_state_dict(memory_model_checkpoint)
-
-    ltm_model.freeze()
-    memory_model.freeze()
-
-    logger.info("Loaded checkpoints for models!")
-
-    # Set up agent
-    agent = Agent(memory_model)
-    memory_module = MemoryModule(
-        agent.model.d_mem,
-        agent.model.num_vectors,
-        agent.model.dtype,
-        agent.model.memory_type,
-    )
-
-    time.sleep(5400)
-    
-    ###############################################################################
+    ##############################################################################
     # Load data
-    ###############################################################################
+    ##############################################################################
     dataset_path = (Path(args.content_dir) / "data" / "dataset").resolve()
     test_dataset = WikiDataset(data_path=str(dataset_path), split="test")
     dataloader = EpochDataloader(
@@ -155,14 +125,14 @@ if __name__ == "__main__":
         pin_memory=True,
     )
     try:
-        losses = evaluate()
-        ppl = np.exp(losses)
-        ci_loss = calculate_confidence_interval(losses)
-        ci_ppl = calculate_confidence_interval(ppl)
-        metrics = {"losses": losses, "ci_loss": ci_loss, "ci_ppl": ci_ppl}
+        acc = evaluate()
+        logger.info(f"Accuracy: {acc}")
+        # ci_acc = calculate_confidence_interval(acc_lst)
+        metrics = {"accuracy": acc}
         with open(log_dir + "/metrics.pkl", "wb") as f:
             pickle.dump(metrics, f)
-        logger.info(format_log(ci_loss, ci_ppl, "test"))
+        # logger.info(format_log(ci_acc, ci_acc, "test"))
         logger.info("Evaluation done!")
     except Exception as e:
         logger.error(e)
+

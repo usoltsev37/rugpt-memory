@@ -1,13 +1,13 @@
 batch_size: 16
 checkpoint_base_cache_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/base/huggingface
 content_dir: '.'
-experiment_name: full_model:all_segments:full_segments
+experiment_name: full_model:all_segments:full_segments:accuracy
 full_segment: true
-description: "Evaluation of base pretrained llm"
+description: "Evaluation of full pretrained"
 log_dir: /home/akarpov/jbelova/rugpt-memory/logs/runs/eval/
 last_segments: false
 pretrained_model_name_or_path: ai-forever/rugpt3small_based_on_gpt2
-pretrained_model_path: "/home/akarpov/jbelova/rugpt-memory/models/our_model"
+pretrained_model_path: "/home/akarpov/jbelova/rugpt-memory/models/"
 seed: 42   
 
 base_model_params:

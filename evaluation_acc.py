@@ -29,9 +29,9 @@ from src.utils.eval_utils import format_log, calculate_confidence_interval, calc
 
 def _evaluate(data: dict) -> torch.Tensor:
     batch_size, num_steps, _ = data["input_ids"].size()
-    episode_loss = 0.0
-    episode_token_count = 0
 
+    episode_samples = 0
+    episode_correct_samples = torch.zeros(5)
     memory_module.reset(batch_size)
 
     if not args.last_segments:
@@ -51,11 +51,11 @@ def _evaluate(data: dict) -> torch.Tensor:
                 data["attention_mask"][:, step, :].contiguous(),
             )
 
-        loss, embeddings = ltm_model(input_ids, attention_mask, memory_module.memory)
-
-        num_tokens_in_segment = attention_mask[0].sum(-1) - 1
-        episode_token_count += num_tokens_in_segment
-        episode_loss += loss.item() * num_tokens_in_segment
+        lm_logits, embeddings = ltm_model(input_ids, attention_mask, memory_module.memory)
+        num_correct, num_samples = calculate_accuracy_on_batch(lm_logits=lm_logits, input_ids=input_ids)
+        episode_samples += num_samples
+        episode_correct_samples += num_correct
+        
 
         # Prepare action for agent
         state = State(
@@ -70,17 +70,18 @@ def _evaluate(data: dict) -> torch.Tensor:
 
         # Update memory
         memory_module.update(action)
-
-    return episode_loss / episode_token_count
+    
+    return episode_correct_samples, episode_samples, episode_correct_samples / episode_samples
 
 
 def evaluate():
-    losses = []
+    correct, cnt = torch.zeros(5), 0
     with torch.no_grad():
-        for batch in tqdm(dataloader):
-            loss = _evaluate(batch)
-            losses.append(loss)
-    return losses
+        for i, batch in enumerate(tqdm(dataloader)):
+            episode_correct_samples, episode_samples, acc = _evaluate(batch)
+            correct += episode_correct_samples
+            cnt += episode_samples
+    return correct / cnt
 
 
 if __name__ == "__main__":
@@ -138,8 +139,6 @@ if __name__ == "__main__":
         agent.model.dtype,
         agent.model.memory_type,
     )
-
-    time.sleep(5400)
     
     ###############################################################################
     # Load data
@@ -155,14 +154,13 @@ if __name__ == "__main__":
         pin_memory=True,
     )
     try:
-        losses = evaluate()
-        ppl = np.exp(losses)
-        ci_loss = calculate_confidence_interval(losses)
-        ci_ppl = calculate_confidence_interval(ppl)
-        metrics = {"losses": losses, "ci_loss": ci_loss, "ci_ppl": ci_ppl}
+        acc = evaluate()
+        logger.info(f"Accuracy: {acc}")
+        # ci_acc = calculate_confidence_interval(acc_lst)
+        metrics = {"accuracy": acc}
         with open(log_dir + "/metrics.pkl", "wb") as f:
             pickle.dump(metrics, f)
-        logger.info(format_log(ci_loss, ci_ppl, "test"))
+        # logger.info(format_log(ci_acc, ci_acc, "test"))
         logger.info("Evaluation done!")
     except Exception as e:
         logger.error(e)
