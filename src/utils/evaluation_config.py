@@ -45,6 +45,7 @@ class EvaluationArguments:
     checkpoint_base_cache_dir: str
     content_dir: str
     experiment_name: str
+    full_segment: bool
     description: str
     log_dir: str
     ltm_params: LTMParams
@@ -52,6 +53,7 @@ class EvaluationArguments:
     pretrained_model_name_or_path: str
     pretrained_model_path: str
     seed: int
+    last_segments: bool
     trainer_args: TrainerArgs
 
 def load_config(path) -> EvaluationArguments:

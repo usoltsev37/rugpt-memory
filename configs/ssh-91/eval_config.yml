@@ -1,0 +1,41 @@
+batch_size: 16
+checkpoint_base_cache_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/base/huggingface
+content_dir: '.'
+experiment_name: ltm_model:all_segments:full_segments
+full_segment: true
+description: "Evaluation of base pretrained llm"
+log_dir: /home/akarpov/jbelova/rugpt-memory/logs/runs/eval/
+last_segments: false
+pretrained_model_name_or_path: ai-forever/rugpt3small_based_on_gpt2
+pretrained_model_path: "/home/akarpov/jbelova/rugpt-memory/models/ltm_pretrained"
+seed: 42   
+
+base_model_params:
+  load_in_4bit: false
+  load_in_8bit: false
+  add_lora: false
+
+memory_model_params:
+  device: cuda:0
+  d_mem: 64
+  d_embd: 768
+  num_vectors: 10
+  n_dec_block: 3
+  n_enc_block: 2
+
+trainer_args:
+  batch_size: 16
+  num_train_epochs: 2
+  ltm_clip_grad_norm: 1.0
+  ltm_learning_rate: 5e-5
+  ltm_model_iterations: 40
+  memory_model_learning_rate: 5e-5
+  memory_model_iterations: 40
+  optimizer: adamw   
+  torch_dtype: float32
+
+ltm_params:
+  cnt_blocks_with_memory: 2
+  device: cuda:1
+  step_length: 256
+  
