@@ -8,7 +8,7 @@ from wiki_dataloader import EpochDataloader
 from wiki_dataset import WikiDataset
 
 split = "test"
-batch_size = 4
+batch_size = 1
 
 dataset_path = Path(".") / "data" / "dataset"
 dataset_path.resolve()

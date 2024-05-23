@@ -1,42 +1,27 @@
-import itertools
+import copy
 import logging
 import math
-import os
 import pickle
 import shutil
-from collections import deque
-from dataclasses import asdict
 from pathlib import Path
 
+import numpy as np
+import scipy.stats as stats
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim
-from datasets import load_dataset
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
-from transformers.trainer_pt_utils import get_model_param_count
 from transformers.trainer_utils import set_seed
 
 from src.data.wiki_dataloader import EpochDataloader
 from src.data.wiki_dataset import WikiDataset
 from src.models.load_base_model import load_base_model
-from src.models.ltm_gpt.ltm_gpt import LTM_GPT
-from src.models.memory_model.memory import MemoryModule
-from src.models.memory_model.memory_model import MemoryModel
-from src.models.rl.agent import Agent
-from src.models.rl.envs import LTMEnvironment
-from src.models.rl.reinforce import REINFORCE
-from src.models.rl.train import train_rl
-from src.models.rl.utils import State
+from src.utils.eval_utils import format_log, calculate_confidence_interval
 from src.utils.evaluation_config import *
 from src.utils.logger_singleton import ColourFormatter, logger
 from src.utils.train_utils import (create_dir_with_name, create_name,
                                    crop_batch, init_arguments)
-from src.utils.eval_utils import format_log
-import copy
-import math
+    
 
 def _evaluate(data: dict) -> torch.Tensor:
     _, num_steps, _ = data["input_ids"].size()
@@ -75,13 +60,12 @@ def _evaluate(data: dict) -> torch.Tensor:
     return episode_loss / episode_token_count
 
 def evaluate():
-    total_loss, num_iterations = 0.0, 0
+    losses = []
     with torch.no_grad():
         for batch in tqdm(dataloader):
             loss = _evaluate(batch)
-            total_loss += loss
-            num_iterations += 1
-    return total_loss / num_iterations    
+            losses.append(loss)
+    return losses
     
 if __name__ == "__main__":
     ###############################################################################
@@ -108,7 +92,7 @@ if __name__ == "__main__":
 
     # Save train config to log_dir
     content_dir = Path(args.content_dir).resolve()
-    shutil.copy(content_dir / "configs" / "eval_config.yml", log_dir)
+    shutil.copy(content_dir / "configs" / "ssh-91" / "eval_config.yml", log_dir)
     logger.info(f"Start evaluation...")
     logger.info(f"Experiment name: {args.experiment_name}")
     logger.info(f"Log dir: {log_dir}")
@@ -133,16 +117,18 @@ if __name__ == "__main__":
         tokenizer,
         step_length=args.ltm_params.step_length,
         batch_size=args.batch_size,
-        shuffle=True,
-        # num_workers=2,
+        shuffle=False,
         pin_memory=True,
     )
     try:
-        loss = evaluate()
-        metrics = {"loss": loss, "ppl": math.exp(loss)}
+        losses = evaluate()
+        ppl = np.exp(losses)
+        ci_loss = calculate_confidence_interval(losses)
+        ci_ppl = calculate_confidence_interval(ppl)
+        metrics = {"losses": losses, "ci_loss": ci_loss, "ci_ppl": ci_ppl}
         with open(log_dir + "/metrics.pkl", "wb") as f:
             pickle.dump(metrics, f)
-        logger.info(format_log(loss, "test"))
+        logger.info(format_log(ci_loss, ci_ppl, "test"))
         logger.info("Evaluation done!")
     except Exception as e:
         logger.error(e)
