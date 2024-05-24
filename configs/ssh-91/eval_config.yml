@@ -1,7 +1,7 @@
 batch_size: 16
 checkpoint_base_cache_dir: /home/akarpov/jbelova/rugpt-memory/checkpoints/base/huggingface
 content_dir: '.'
-experiment_name: ltm_model:all_segments:full_segments
+experiment_name: ltm_model:all_segments:full_segments:accuracy_
 full_segment: true
 description: "Evaluation of base pretrained llm"
 log_dir: /home/akarpov/jbelova/rugpt-memory/logs/runs/eval/

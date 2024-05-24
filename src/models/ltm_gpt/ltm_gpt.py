@@ -68,6 +68,7 @@ class LTM_GPT(nn.Module):
         attention_mask: torch.tensor,
         memory: torch.Tensor,
         reward_for_agent: bool = False,
+        only_logits: bool = True
     ) -> torch.Tensor:
 
         input_ids = self.convert_tensor_to_second_device(input_ids)
@@ -81,6 +82,9 @@ class LTM_GPT(nn.Module):
         embeddings = self.ln_f(embeddings)
         lm_logits = self.lm_head(embeddings)
         lm_logits = lm_logits.to(self.second_device)
+        
+        if only_logits:
+            return lm_logits.cpu()
 
         shift_logits = lm_logits[..., :-1, :].contiguous()
         shift_labels = input_ids[..., 1:].contiguous()
@@ -113,5 +117,5 @@ class LTM_GPT(nn.Module):
             if "gpt2_block" not in n:
                 p.requires_grad = True
 
-        for p in self.transform_matrix.parameters():
-            p.requires_grad = True
+        # for p in self.transform_matrix.parameters():
+        #     p.requires_grad = True

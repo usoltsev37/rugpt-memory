@@ -302,6 +302,7 @@ class WikiDataset(Dataset):
     #         article = json.loads(f.readline())
     #         return self._add_context_to_article(article)
 
-# set_seed(42)
-# dataset_path = (Path('.') / "data" / "dataset").resolve()
-# train_dataset = WikiDataset(data_path=str(dataset_path), split="test")
+set_seed(42)
+dataset_path = (Path('.') / "data" / "dataset").resolve()
+train_dataset = WikiDataset(data_path=str(dataset_path), split="train")
+print(len(train_dataset))
