@@ -68,7 +68,7 @@ class LTM_GPT(nn.Module):
         attention_mask: torch.tensor,
         memory: torch.Tensor,
         reward_for_agent: bool = False,
-        only_logits: bool = True
+        only_logits: bool = False
     ) -> torch.Tensor:
 
         input_ids = self.convert_tensor_to_second_device(input_ids)
@@ -100,9 +100,9 @@ class LTM_GPT(nn.Module):
 
         return loss
 
-    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, memory, reward_for_agent=False):
+    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, memory, reward_for_agent=False, only_logits=True):
         embeddings = self.get_embeddings(input_ids, attention_mask)
-        return self.get_output(embeddings, input_ids, attention_mask, memory, reward_for_agent), embeddings
+        return self.get_output(embeddings, input_ids, attention_mask, memory, reward_for_agent, only_logits), embeddings
 
     def freeze(self) -> None:
         self.eval()
