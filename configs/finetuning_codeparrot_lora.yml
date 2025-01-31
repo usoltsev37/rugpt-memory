@@ -1,0 +1,16 @@
+exp_name: finetuning_codeparrot
+device: cuda # default setup: model load on all gpus (device_map 'auto' in AutoModelForCausalLM.from_pretrained) 
+content_dir: '.'
+pretrained_model_name_or_path: ai-forever/ruGPT-3.5-13B
+checkpoint_base_cache_dir: checkpoints/base/huggingface # for training: /media/public/rugpt-memory/checkpoints/base/huggingface 
+base_model_params:
+    load_in_4bit: true # if true you need to code LoRa layers
+    load_in_8bit: false # if true you need to code LoRa layers
+trainer_args:
+    per_device_train_batch_size: 4
+    gradient_accumulation_steps: 4
+    warmup_steps: 0
+    max_steps: 10
+    learning_rate: 2e-4
+    fp16: true
+    logging_steps: 1
