@@ -98,6 +98,7 @@ class WikiDataset(Dataset):
         self.current_file = None
         self.current_file_index = 0
         self.file_paths = list((self.data_path / "dataset_with_sampled_context" / split).rglob('*'))
+        self.file_paths = sorted(self.file_paths, key=lambda x: x.name)
         self.load_next_file()
         
     def load_next_file(self):
@@ -152,13 +153,12 @@ class WikiDataset(Dataset):
         print("Saving dataset...")
         dataset_path = Path(self.data_path) / "dataset_with_sampled_context" / self.split
         dataset_path.mkdir(exist_ok=True, parents=True)
-        
+        tokenizer = AutoTokenizer.from_pretrained("ai-forever/rugpt3small_based_on_gpt2")
         nextFile = NextFile(dataset_path)
         out = OutputSplitter(nextFile, 1024 * 1024 * 200)
-        
+        articles = []
         for article_id in tqdm(self.ids, total=len(self.ids)):
             path_to_file, offset, _ = self.id_to_offset[article_id]
-            
             full_path_to_file = Path(self.data_path) / path_to_file
             
             with full_path_to_file.open("rb") as f:
@@ -166,9 +166,16 @@ class WikiDataset(Dataset):
                 article = json.loads(f.readline())
                 article_with_context = self._add_context_to_article(article)
                 sample = {"title": article["title"], "text": article_with_context}
-                json_article = json.dumps(sample, ensure_ascii=False)
-                out.write(json_article + '\n')
+                articles.append([sample, tokenizer(sample["text"], return_length=True)["length"][0]])
+                # json_article = json.dumps(sample, ensure_ascii=False)
+                # out.write(json_article + '\n')
         
+        articles.sort(key=lambda x: x[1])
+        
+        for sample, _ in articles:
+            json_article = json.dumps(sample, ensure_ascii=False)
+            out.write(json_article + '\n')
+            
         out.close()
         print(f"Dataset saved to {dataset_path}!")
 
