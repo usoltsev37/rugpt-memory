@@ -15,7 +15,7 @@ You can download dataset [here](https://drive.google.com/drive/folders/1oPf2Yn7N
 
 ## Code Navigation
 ### Train models
-Code for models is located in [src/models](https://github.com/usoltsev37/rugpt-memory/tree/jbelova/main/src/models).
+Code for models is located in [src/models](https://github.com/usoltsev37/rugpt-memory/tree/main/src/models).
 
 The main training code for LLM-LTM is located in [train.py](https://github.com/usoltsev37/rugpt-memory/blob/main/train.py).
 
@@ -23,7 +23,7 @@ For LLM and agent pretraining, see the code in the corresponding branches: [pret
 
 
 ### RL part
-The code related to reinforcement learning can be found in [src/models/rl](https://github.com/usoltsev37/rugpt-memory/tree/jbelova/main/src/models/rl).
+The code related to reinforcement learning can be found in [src/models/rl](https://github.com/usoltsev37/rugpt-memory/tree/main/src/models/rl).
 
 The environment, agent, reward function, REINFORCE and agent training are defined there.
 
